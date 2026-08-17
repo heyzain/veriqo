@@ -1,0 +1,31 @@
+/**
+ * Theme overrides.
+ *
+ * 01-DESIGN-SYSTEM.md: "Dark mode is not required in Phase 1. When added,
+ * define semantic-token overrides rather than editing components."
+ *
+ * Phase 0 builds light mode only. This file exists so the override point is
+ * established now: a future dark theme redefines the semantic tokens from
+ * tokens.css here (both an explicit `[data-theme="dark"]` attribute and a
+ * `prefers-color-scheme` fallback), and every component keeps working
+ * unchanged because they only ever consume the semantic Tailwind aliases.
+ *
+ * Left empty on purpose — no dark palette has been designed or approved
+ * yet, and inventing one here would violate the "no improvised visual
+ * direction" rule.
+ *
+ * Future shape:
+ *
+ *   @media (prefers-color-scheme: dark) {
+ *     :root:not([data-theme="light"]) {
+ *       --bg-app: ...;
+ *       --text-primary: ...;
+ *       ...
+ *     }
+ *   }
+ *
+ *   :root[data-theme="dark"] {
+ *     --bg-app: ...;
+ *     ...
+ *   }
+ */

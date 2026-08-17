@@ -1,0 +1,69 @@
+/**
+ * Type scale from 01-DESIGN-SYSTEM.md, registered as Tailwind font-size
+ * tokens so components reach them as ordinary `text-*` utilities
+ * (`text-title-lg`, `text-body-sm`, …) instead of one-off CSS.
+ *
+ * Font families are bound to next/font variables in app/layout.tsx and
+ * aliased to --font-sans/--font-serif/--font-mono in tokens.css.
+ */
+@theme {
+  --text-display-lg: 52px;
+  --text-display-lg--line-height: 54px;
+  --text-display-md: 38px;
+  --text-display-md--line-height: 42px;
+  --text-title-xl: 30px;
+  --text-title-xl--line-height: 36px;
+  --text-title-lg: 24px;
+  --text-title-lg--line-height: 30px;
+  --text-title-md: 18px;
+  --text-title-md--line-height: 24px;
+  --text-body-lg: 16px;
+  --text-body-lg--line-height: 26px;
+  --text-body: 14px;
+  --text-body--line-height: 22px;
+  --text-body-sm: 13px;
+  --text-body-sm--line-height: 19px;
+  --text-label: 12px;
+  --text-label--line-height: 16px;
+  --text-eyebrow: 11px;
+  --text-eyebrow--line-height: 16px;
+  --text-mono-sm: 12px;
+  --text-mono-sm--line-height: 18px;
+}
+
+/**
+ * `label` and `eyebrow` always carry a fixed weight/tracking alongside their
+ * size, per the type scale table. Custom utilities keep that pairing in one
+ * place instead of repeating `font-semibold tracking-wide` at every call
+ * site.
+ */
+@utility text-label-style {
+  font-size: var(--text-label);
+  line-height: var(--text-label--line-height);
+  font-weight: 600;
+}
+
+@utility text-eyebrow-style {
+  font-size: var(--text-eyebrow);
+  line-height: var(--text-eyebrow--line-height);
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+html {
+  color-scheme: light;
+}
+
+body {
+  background-color: var(--bg-app);
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  font-size: var(--text-body);
+  line-height: var(--text-body--line-height);
+}
+
+::selection {
+  background-color: var(--marigold);
+  color: var(--ink-0);
+}

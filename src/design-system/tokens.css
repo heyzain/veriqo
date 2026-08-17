@@ -1,0 +1,123 @@
+/**
+ * Veriqo design tokens — "Quiet Ledger"
+ *
+ * Two layers:
+ *   1. Primitives  — raw palette values. Never referenced directly by components.
+ *   2. Semantic    — meaning-based tokens components are allowed to use.
+ *
+ * A third block maps the semantic tokens into Tailwind's `@theme inline`
+ * namespace so components can reach them through ordinary utility classes
+ * (`bg-app`, `text-foreground`, `border-subtle`, …) instead of raw CSS.
+ *
+ * Dark mode is intentionally not defined yet — see themes.css. Because the
+ * Tailwind aliases below are indirected through the semantic `:root`
+ * variables (not the primitives), a future dark theme only has to redefine
+ * the semantic block; no component or Tailwind mapping changes.
+ */
+
+:root {
+  /* ---------------------------------------------------------------- */
+  /* Primitives                                                        */
+  /* ---------------------------------------------------------------- */
+  --paper-0: #fbfaf6;
+  --paper-1: #f5f2ea;
+  --paper-2: #ebe6da;
+  --ink-0: #13251f;
+  --ink-1: #294139;
+  --ink-2: #667a72;
+  --forest-0: #0f3026;
+  --forest-1: #17483a;
+  --moss: #2f7a60;
+  --marigold: #d8a83e;
+  --clay: #b95f4f;
+  --sky: #4f7893;
+  --violet: #766a91;
+  --white: #ffffff;
+  --black: #0b1511;
+
+  /* ---------------------------------------------------------------- */
+  /* Semantic tokens                                                   */
+  /* ---------------------------------------------------------------- */
+  --bg-app: var(--paper-1);
+  --bg-surface: var(--paper-0);
+  --bg-raised: var(--white);
+  --bg-inset: #efebe2;
+  --bg-sidebar: var(--forest-0);
+
+  --text-primary: var(--ink-0);
+  --text-secondary: var(--ink-1);
+  --text-muted: var(--ink-2);
+  --text-on-dark: #f7f4eb;
+
+  --border-subtle: rgba(19, 37, 31, 0.11);
+  --border-strong: rgba(19, 37, 31, 0.22);
+
+  --action-primary: var(--moss);
+  --action-primary-hover: #286b54;
+  --focus-ring: rgba(47, 122, 96, 0.28);
+
+  --status-pass: #3f7d5b;
+  --status-fail: #b55248;
+  --status-partial: #b8872c;
+  --status-blocked: #687078;
+  --status-progress: #4f7893;
+  --status-ai: #766a91;
+  --status-neutral: var(--ink-2);
+}
+
+/**
+ * Tailwind theme mapping. Kept `inline` (not resolved at build time) so the
+ * generated utilities keep tracking whichever values are active in :root —
+ * required for a future dark-mode override to work without touching this
+ * mapping or any component.
+ */
+@theme inline {
+  --color-app: var(--bg-app);
+  --color-surface: var(--bg-surface);
+  --color-raised: var(--bg-raised);
+  --color-inset: var(--bg-inset);
+  --color-sidebar: var(--bg-sidebar);
+
+  --color-foreground: var(--text-primary);
+  --color-foreground-secondary: var(--text-secondary);
+  --color-foreground-muted: var(--text-muted);
+  --color-foreground-on-dark: var(--text-on-dark);
+
+  --color-subtle: var(--border-subtle);
+  --color-strong: var(--border-strong);
+
+  --color-action: var(--action-primary);
+  --color-action-hover: var(--action-primary-hover);
+  --color-focus-ring: var(--focus-ring);
+
+  --color-pass: var(--status-pass);
+  --color-fail: var(--status-fail);
+  --color-partial: var(--status-partial);
+  --color-blocked: var(--status-blocked);
+  --color-progress: var(--status-progress);
+  --color-ai: var(--status-ai);
+  --color-neutral: var(--status-neutral);
+
+  --font-sans: var(--font-body);
+  --font-serif: var(--font-display);
+  --font-mono: var(--font-technical);
+}
+
+/**
+ * Radius and shadow tokens. These have no theme-dependent values, so they
+ * are declared directly in Tailwind's theme layer — this both overrides the
+ * matching default Tailwind scale keys and emits the same names as real CSS
+ * variables other stylesheets can reference.
+ */
+@theme {
+  --radius-xs: 6px;
+  --radius-sm: 10px;
+  --radius-md: 14px;
+  --radius-lg: 20px;
+  --radius-xl: 28px;
+  --radius-pill: 999px;
+
+  --shadow-sm: 0 1px 2px rgba(13, 30, 24, 0.06);
+  --shadow-md: 0 12px 32px rgba(13, 30, 24, 0.1);
+  --shadow-lg: 0 24px 64px rgba(13, 30, 24, 0.14);
+}
