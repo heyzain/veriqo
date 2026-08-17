@@ -7,6 +7,12 @@ export default defineConfig({
   resolve: {
     alias: {
       "@": fileURLToPath(new URL("./src", import.meta.url)),
+      // The real package throws unless bundled under React's `react-server`
+      // condition, which Vitest doesn't set — see src/test/mocks/server-only.ts.
+      "server-only": fileURLToPath(new URL("./src/test/mocks/server-only.ts", import.meta.url)),
+      // `cookies()` throws outside a real Next.js request context — see
+      // src/test/mocks/next-headers.ts.
+      "next/headers": fileURLToPath(new URL("./src/test/mocks/next-headers.ts", import.meta.url)),
     },
   },
   test: {

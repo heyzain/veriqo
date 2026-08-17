@@ -22,9 +22,16 @@ import type {
 const project: Project = {
   id: "proj-linkvault",
   publicId: "LNKV",
+  slug: "linkvault",
+  ownerId: "user-priya",
   name: "LinkVault",
   description: "A personal link-management app with a private, lockable vault.",
   appUrl: "https://linkvault.example.com",
+  environment: "staging",
+  repository: "github.com/priyanair/linkvault",
+  archived: false,
+  setupStepsCompleted: 7,
+  createdAt: "2026-07-01T09:00:00.000Z",
 };
 
 const features: Feature[] = [

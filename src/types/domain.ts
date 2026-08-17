@@ -17,12 +17,25 @@ import type {
 
 export type RiskLevel = "low" | "medium" | "high";
 
+export type ProjectEnvironment = "development" | "staging" | "production";
+
 export type Project = {
   id: string;
+  /** Short display code, e.g. "LNKV" — never the internal `id`. */
   publicId: string;
+  /** URL-safe identifier used in routes instead of the internal `id`. */
+  slug: string;
+  ownerId: string;
   name: string;
   description: string;
   appUrl: string;
+  environment: ProjectEnvironment;
+  /** Repository URL or local-path context, per the core journey in 00-PRODUCT.md. */
+  repository?: string;
+  archived: boolean;
+  /** Count of completed onboarding steps (0-7) — see setup-steps.config.ts. */
+  setupStepsCompleted: number;
+  createdAt: string;
 };
 
 export type Feature = {
