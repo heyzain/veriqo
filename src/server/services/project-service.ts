@@ -12,6 +12,7 @@ import {
   listIssuesForProject,
   listProjectsForOwner,
   listTestCasesForProject,
+  listTestResultsForProject,
   listTestRunsForProject,
   updateProject,
 } from "@/server/repositories/project-repository";
@@ -132,6 +133,8 @@ export type ProjectRecords = {
   features: import("@/types/domain").Feature[];
   testCases: import("@/types/domain").TestCase[];
   testRuns: import("@/types/domain").TestRun[];
+  /** Every recorded result across every run — Phase 9's release-confidence and analytics engines need results at the project level, not one run at a time. */
+  testResults: import("@/types/domain").TestResult[];
   issues: import("@/types/domain").Issue[];
   activity: import("@/types/domain").ActivityEvent[];
 };
@@ -146,6 +149,7 @@ export function getProjectRecords(slug: string, owner: PublicUser): ProjectRecor
     features: listFeaturesForProject(project.id),
     testCases: listTestCasesForProject(project.id),
     testRuns: listTestRunsForProject(project.id),
+    testResults: listTestResultsForProject(project.id),
     issues: listIssuesForProject(project.id),
     activity: listActivityForProject(project.id),
   };

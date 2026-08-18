@@ -7,13 +7,15 @@ import { Button } from "@/components/ui/button";
 import { Icon } from "@/components/ui/icon";
 import { totalSetupSteps } from "@/config/setup-steps.config";
 import { mcpConnectionStatuses } from "@/config/status.config";
+import { NextActionPanel } from "@/features/analytics/components/next-action-panel";
+import { ReleaseConfidencePanel } from "@/features/analytics/components/release-confidence-panel";
 import { ProjectHealthStrip } from "@/features/projects/components/project-health-strip";
-import { ReleaseNarrativePanel } from "@/features/projects/components/release-narrative-panel";
 import { SetupPath } from "@/features/projects/components/setup-path";
 import { formatDate } from "@/lib/format/date";
 import { getCurrentUser } from "@/server/services/auth-service";
 import { getMcpConnectionSnapshot } from "@/server/services/mcp-service";
 import { getProjectRecords, getProjectSummary } from "@/server/services/project-service";
+import { getReleaseReadiness } from "@/server/services/release-confidence-service";
 
 export async function generateMetadata({
   params,
@@ -43,6 +45,7 @@ export default async function ProjectOverviewPage({
   const { project } = summary;
   const isFullySetUp = project.setupStepsCompleted >= totalSetupSteps;
   const mcpSnapshot = getMcpConnectionSnapshot(project);
+  const readiness = isFullySetUp ? getReleaseReadiness(records) : null;
 
   return (
     <div className="flex flex-col gap-8">
@@ -106,8 +109,11 @@ export default async function ProjectOverviewPage({
           {/* Health Strip */}
           <ProjectHealthStrip summary={summary} mcpStatus={mcpSnapshot.status} />
 
-          {/* Release Readiness Narrative */}
-          <ReleaseNarrativePanel records={records} />
+          {/* Next Action — the one dominant action for this view */}
+          {readiness ? <NextActionPanel action={readiness.nextAction} /> : null}
+
+          {/* Explainable Release Confidence */}
+          {readiness ? <ReleaseConfidencePanel confidence={readiness.confidence} /> : null}
 
           {/* Recent Activity Ledger snippet & Quick links */}
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">

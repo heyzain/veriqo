@@ -52,3 +52,14 @@ export function formatRelativeTime(iso: string, now: Date = new Date()): string 
 
   return formatDate(iso);
 }
+
+/**
+ * A duration given in hours, rendered as "18h" or "2.3 days" — for
+ * analytics durations like fix-to-verification time (Phase 9) where the
+ * exact minute doesn't matter but the rough scale does.
+ */
+export function formatDurationHours(hours: number): string {
+  if (hours < 1) return "< 1h";
+  if (hours < 48) return `${Math.round(hours)}h`;
+  return `${(hours / 24).toFixed(1)} days`;
+}

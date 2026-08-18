@@ -168,6 +168,16 @@ export function listTestResultsForRun(testRunId: string): TestResult[] {
   return Array.from(store.testResults.values()).filter((result) => result.testRunId === testRunId);
 }
 
+/** Every result across every run in the project — joins through `testRuns` since `TestResult` only carries a `testRunId`, not its own `projectId`. Backs Phase 9 analytics/release-confidence, which need results at the project level rather than one run at a time. */
+export function listTestResultsForProject(projectId: string): TestResult[] {
+  const runIds = new Set(
+    Array.from(store.testRuns.values())
+      .filter((run) => run.projectId === projectId)
+      .map((run) => run.id),
+  );
+  return Array.from(store.testResults.values()).filter((result) => runIds.has(result.testRunId));
+}
+
 /** Scoped by `projectId` via the owning run — a result `id` from another project can never resolve here. */
 export function findTestResultById(projectId: string, id: string): TestResult | null {
   const result = store.testResults.get(id);
