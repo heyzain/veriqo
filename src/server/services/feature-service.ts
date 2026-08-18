@@ -15,6 +15,7 @@ import {
   saveFeature,
 } from "@/server/repositories/project-repository";
 import { advanceSetupStep } from "@/server/services/project-service";
+import { markTestCasesNeedsUpdateForFeatureChange } from "@/server/services/test-case-service";
 import type { FeatureStatus } from "@/config/status.config";
 import type {
   ActivityEvent,
@@ -322,6 +323,13 @@ export function updateFeatureFromDiscovery(
     updated.id,
     { metadata: { promptId: updated.promptId, promptVersion: updated.promptVersion } },
   );
+
+  // Phase 5, "`Needs update` behavior for changed features": an approved
+  // feature moving to `changed` cascades its already-`ready` test cases to
+  // `needsUpdate` rather than leaving stale coverage silently marked ready.
+  if (wasApproved) {
+    markTestCasesNeedsUpdateForFeatureChange(updatedProject, updated.id, updated.publicId);
+  }
 
   return ok({ feature: updated, project: updatedProject });
 }

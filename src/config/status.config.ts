@@ -102,6 +102,21 @@ export const testCaseStatuses: StatusMap<TestCaseStatus> = {
   },
 };
 
+/**
+ * Test-case priority (Phase 5 acceptance: "Each test has a parent feature,
+ * steps, expected result, priority, and role/environment context"). Not a
+ * lifecycle — no transitions — so it doesn't use `StatusMap`; shown the same
+ * iconless-badge way `RiskMark` shows `RiskLevel`.
+ */
+export type TestCasePriority = "critical" | "high" | "medium" | "low";
+
+export const testCasePriorities: Record<TestCasePriority, { label: string; tone: StatusTone }> = {
+  critical: { label: "Critical", tone: "fail" },
+  high: { label: "High", tone: "partial" },
+  medium: { label: "Medium", tone: "progress" },
+  low: { label: "Low", tone: "neutral" },
+};
+
 export type TestRunStatus =
   | "planned"
   | "inProgress"

@@ -5,6 +5,11 @@ import {
   mcpListFeaturesSchema,
   mcpUpdateFeatureSchema,
 } from "@/features/features/schemas";
+import {
+  mcpCreateTestCaseSchema,
+  mcpListTestCasesSchema,
+  mcpUpdateTestCaseSchema,
+} from "@/features/test-cases/schemas";
 import { totalSetupSteps } from "@/config/setup-steps.config";
 import {
   createFeatureFromDiscovery,
@@ -12,12 +17,17 @@ import {
   updateFeatureFromDiscovery,
 } from "@/server/services/feature-service";
 import {
+  createTestCaseFromGeneration,
+  listTestCasesForMcp,
+  updateTestCaseFromGeneration,
+} from "@/server/services/test-case-service";
+import {
   listFeaturesForProject,
   listIssuesForProject,
   listTestCasesForProject,
   listTestRunsForProject,
 } from "@/server/repositories/project-repository";
-import type { Feature, Project } from "@/types/domain";
+import type { Feature, Project, TestCase } from "@/types/domain";
 
 /**
  * MCP tools available to a connected Claude client, project-scoped by
@@ -33,6 +43,9 @@ export const mcpToolNames = [
   "list_features",
   "create_feature",
   "update_feature",
+  "list_test_cases",
+  "create_test_case",
+  "update_test_case",
 ] as const;
 export type McpToolName = (typeof mcpToolNames)[number];
 
@@ -134,6 +147,60 @@ function updateFeature(project: Project, input: unknown): McpToolRunResult {
   return toolOk({ feature: toMcpFeature(result.data.feature, allFeatures) });
 }
 
+/** `Do not expose database IDs when stable public IDs are appropriate` (04-CONFIG-BLUEPRINT.md). */
+function toMcpTestCase(testCase: TestCase, allFeatures: readonly Feature[]): Record<string, unknown> {
+  const feature = allFeatures.find((f) => f.id === testCase.featureId);
+  const duplicateOf = testCase.possibleDuplicateOfId
+    ? listTestCasesForProject(testCase.projectId).find((tc) => tc.id === testCase.possibleDuplicateOfId)
+    : undefined;
+
+  return {
+    testCaseId: testCase.publicId,
+    featureId: feature?.publicId ?? null,
+    title: testCase.title,
+    status: testCase.status,
+    priority: testCase.priority,
+    preconditions: testCase.preconditions ?? null,
+    steps: testCase.steps,
+    expectedResult: testCase.expectedResult,
+    roles: testCase.roles,
+    environments: testCase.environments,
+    possibleDuplicateOf: duplicateOf?.publicId ?? null,
+  };
+}
+
+function listTestCases(project: Project, input: unknown): McpToolRunResult {
+  const parsed = mcpListTestCasesSchema.safeParse(input ?? {});
+  if (!parsed.success) return toolFail(parsed.error.issues[0]?.message ?? "Invalid input.");
+
+  const allFeatures = listFeaturesForProject(project.id);
+  const testCases = listTestCasesForMcp(project, parsed.data.status, parsed.data.featureId);
+  return toolOk({ testCases: testCases.map((tc) => toMcpTestCase(tc, allFeatures)) });
+}
+
+function createTestCase(project: Project, input: unknown): McpToolRunResult {
+  const parsed = mcpCreateTestCaseSchema.safeParse(input);
+  if (!parsed.success) return toolFail(parsed.error.issues[0]?.message ?? "Invalid input.");
+
+  const result = createTestCaseFromGeneration(project, parsed.data);
+  if (!result.ok) return toolFail(result.error);
+
+  const allFeatures = listFeaturesForProject(project.id);
+  return toolOk({ testCase: toMcpTestCase(result.data.testCase, allFeatures) });
+}
+
+function updateTestCase(project: Project, input: unknown): McpToolRunResult {
+  const parsed = mcpUpdateTestCaseSchema.safeParse(input);
+  if (!parsed.success) return toolFail(parsed.error.issues[0]?.message ?? "Invalid input.");
+
+  const { testCaseId, ...fields } = parsed.data;
+  const result = updateTestCaseFromGeneration(project, testCaseId, fields);
+  if (!result.ok) return toolFail(result.error);
+
+  const allFeatures = listFeaturesForProject(project.id);
+  return toolOk({ testCase: toMcpTestCase(result.data.testCase, allFeatures) });
+}
+
 export function runMcpTool(tool: McpToolName, project: Project, input: unknown): McpToolRunResult {
   switch (tool) {
     case "health_check":
@@ -146,5 +213,11 @@ export function runMcpTool(tool: McpToolName, project: Project, input: unknown):
       return createFeature(project, input);
     case "update_feature":
       return updateFeature(project, input);
+    case "list_test_cases":
+      return listTestCases(project, input);
+    case "create_test_case":
+      return createTestCase(project, input);
+    case "update_test_case":
+      return updateTestCase(project, input);
   }
 }

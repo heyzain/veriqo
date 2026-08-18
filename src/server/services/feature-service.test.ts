@@ -313,8 +313,14 @@ describe("feature-service — merge", () => {
       featureId: duplicate.data.feature.id,
       title: "Search returns ranked results",
       status: "ready",
+      priority: "medium",
       steps: [],
       expectedResult: "Ranked results.",
+      roles: [],
+      environments: [],
+      createdBySource: "claude",
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
     });
 
     const result = mergeFeatures(project, survivor.data.feature.publicId, duplicate.data.feature.publicId, owner.name);

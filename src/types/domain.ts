@@ -96,15 +96,54 @@ export type Feature = {
   updatedAt: string;
 };
 
+export type TestCasePriority = "critical" | "high" | "medium" | "low";
+
+/**
+ * The snapshot of a test case's reviewable content immediately before
+ * Claude's latest proposed update overwrote it — the same "diff before
+ * approving again" treatment `FeatureSnapshot` gives features (Phase 5
+ * mirrors Phase 4's review pattern). Kept only while `status ===
+ * "needsUpdate"`.
+ */
+export type TestCaseSnapshot = {
+  title: string;
+  steps: readonly string[];
+  expectedResult: string;
+  priority: TestCasePriority;
+};
+
 export type TestCase = {
   id: string;
+  /** Module-aware, e.g. "PV-07" — see `lib/ids/test-case-identifiers.ts`. */
   publicId: string;
   projectId: string;
+  /** References the parent `Feature.id` (internal) — resolved to/from its `publicId` at the MCP boundary. */
   featureId: string;
   title: string;
   status: TestCaseStatus;
+  priority: TestCasePriority;
+  preconditions?: string;
   steps: readonly string[];
   expectedResult: string;
+  /** User roles this case exercises, if it varies by role (mirrors `Feature.roles`). */
+  roles: readonly string[];
+  /** Environments/browsers this case targets, e.g. "Chrome", "Mobile Safari". */
+  environments: readonly string[];
+  /**
+   * Set when this test case was generated with a confusingly similar title
+   * to an existing, non-archived case on the same feature — surfaced for
+   * human review rather than silently created or silently merged (Phase 5,
+   * "Duplicate/conflict detection"). References another `TestCase.id`.
+   */
+  possibleDuplicateOfId?: string;
+  previousSnapshot?: TestCaseSnapshot;
+  createdBySource: ActorType;
+  promptId?: string;
+  promptVersion?: number;
+  /** Idempotency key from the MCP `create_test_case` call, if any — see `Feature.idempotencyKey`. */
+  idempotencyKey?: string;
+  createdAt: string;
+  updatedAt: string;
 };
 
 export type TestRun = {

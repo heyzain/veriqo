@@ -4,11 +4,18 @@ import { notFound, redirect } from "next/navigation";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { EmptyState } from "@/components/ui/empty-state";
 import { Icon } from "@/components/ui/icon";
-import { testCaseStatuses } from "@/config/status.config";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { TestCaseFilterBar } from "@/features/test-cases/components/test-case-filter-bar";
+import { TestCaseGenerationPanel } from "@/features/test-cases/components/test-case-generation-panel";
+import {
+  TestCaseRecordTable,
+  type TestCaseGrouping,
+} from "@/features/test-cases/components/test-case-record-table";
 import { getCurrentUser } from "@/server/services/auth-service";
 import { getProjectRecords } from "@/server/services/project-service";
+import { listTestCasesForProject } from "@/server/services/test-case-service";
+import type { TestCase } from "@/types/domain";
 
 export async function generateMetadata({
   params,
@@ -20,122 +27,144 @@ export async function generateMetadata({
   return { title: records ? `${records.project.name} · Test Cases` : "Test Cases" };
 }
 
+function matchesQuery(testCase: TestCase, query: string): boolean {
+  const normalized = query.trim().toLowerCase();
+  if (!normalized) return true;
+  return (
+    testCase.title.toLowerCase().includes(normalized) ||
+    testCase.publicId.toLowerCase().includes(normalized) ||
+    testCase.expectedResult.toLowerCase().includes(normalized)
+  );
+}
+
 export default async function ProjectTestCasesPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ slug: string }>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const user = await getCurrentUser();
   if (!user) redirect("/sign-in");
 
   const { slug } = await params;
+  const query = await searchParams;
   const records = getProjectRecords(slug, user);
   if (!records) notFound();
 
-  const { project, testCases, features } = records;
+  const { project, features } = records;
+  const allTestCases = listTestCasesForProject(project);
+  const approvedFeatures = features.filter((f) => f.status === "approved");
+
+  const statusFilter = typeof query.status === "string" ? query.status : "";
+  const priorityFilter = typeof query.priority === "string" ? query.priority : "";
+  const featureFilter = typeof query.feature === "string" ? query.feature : "";
+  const searchQuery = typeof query.q === "string" ? query.q : "";
+  const grouping: TestCaseGrouping =
+    query.group === "status" || query.group === "priority" || query.group === "none" ? query.group : "feature";
+  const hasActiveFilters = Boolean(statusFilter || priorityFilter || featureFilter || searchQuery);
+
+  const filteredTestCases = allTestCases.filter((testCase) => {
+    const feature = features.find((f) => f.id === testCase.featureId);
+    return (
+      (!statusFilter || testCase.status === statusFilter) &&
+      (!priorityFilter || testCase.priority === priorityFilter) &&
+      (!featureFilter || feature?.publicId === featureFilter) &&
+      matchesQuery(testCase, searchQuery)
+    );
+  });
+
+  const searchString = new URLSearchParams(
+    Object.entries(query).flatMap(([key, value]) =>
+      typeof value === "string" ? [[key, value] as [string, string]] : [],
+    ),
+  ).toString();
+  const currentUrl = `/projects/${project.slug}/test-cases${searchString ? `?${searchString}` : ""}`;
+
+  const pendingCount = allTestCases.filter((tc) => tc.status === "inReview" || tc.status === "needsUpdate").length;
+  const candidateEnvironments = Array.from(
+    new Set([
+      project.environment.charAt(0).toUpperCase() + project.environment.slice(1),
+      "Chrome",
+      "Firefox",
+      "Safari",
+      "Mobile",
+    ]),
+  );
 
   return (
     <div className="flex flex-col gap-8">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-subtle pb-6">
+      <div className="flex flex-col gap-4 border-b border-subtle pb-6 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex flex-col gap-1">
-          <div className="flex items-center gap-2.5">
+          <div className="flex flex-wrap items-center gap-2.5">
             <h1 className="text-title-lg font-serif text-foreground">Test Cases</h1>
-            <span className="text-mono-sm text-foreground-muted">({testCases.length} records)</span>
+            <span className="text-mono-sm text-foreground-muted">({allTestCases.length} recorded)</span>
+            {pendingCount > 0 ? (
+              <Badge tone="ai" icon="needsReview">
+                {pendingCount} need{pendingCount === 1 ? "s" : ""} review
+              </Badge>
+            ) : null}
           </div>
           <p className="text-body text-foreground-secondary">
-            Traceable QA test specifications linked to parent features and execution history.
+            Traceable QA specifications generated from approved features, grouped for review before execution.
           </p>
         </div>
 
-        <div className="flex items-center gap-2.5">
-          <Button asChild intent="secondary" size="md">
-            <Link href={`/projects/${project.slug}/features`}>
-              <Icon name="features" size={15} />
-              <span>View Features</span>
-            </Link>
-          </Button>
-          <Button asChild intent="primary" size="md">
-            <Link href={`/projects/${project.slug}/test-runs`}>
-              <Icon name="testRuns" size={16} />
-              <span>Create test run</span>
-            </Link>
-          </Button>
-        </div>
+        <Button asChild intent="primary" size="md">
+          <Link href={`/projects/${project.slug}/test-runs`}>
+            <Icon name="testRuns" size={16} />
+            <span>Create test run</span>
+          </Link>
+        </Button>
       </div>
 
-      {/* Main Surface: Table or Empty State */}
-      {testCases.length === 0 ? (
-        <EmptyState
-          icon="testCases"
-          title="No test cases generated yet"
-          description="Generate test cases from approved features to establish disciplined coverage for this project."
-          action={
-            <Button asChild intent="primary">
-              <Link href={`/projects/${project.slug}/features`}>
-                <Icon name="features" size={16} />
-                <span>Review Features</span>
-              </Link>
-            </Button>
-          }
-        />
-      ) : (
-        <div className="flex flex-col gap-4">
-          {testCases.map((tc) => {
-            const parentFeature = features.find((f) => f.id === tc.featureId);
-            const statusDef = testCaseStatuses[tc.status];
+      <Tabs defaultValue={allTestCases.length === 0 ? "generate" : "records"}>
+        <TabsList>
+          <TabsTrigger value="records">Records</TabsTrigger>
+          <TabsTrigger value="generate">Generate</TabsTrigger>
+        </TabsList>
 
-            return (
-              <div
-                key={tc.id}
-                className="flex flex-col gap-4 rounded-lg border border-subtle bg-surface p-6 shadow-sm"
-              >
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-subtle pb-4">
-                  <div className="flex flex-wrap items-center gap-2.5">
-                    <span className="text-mono-sm font-bold text-foreground px-2 py-0.5 rounded bg-inset border border-subtle">
-                      {tc.publicId}
-                    </span>
-                    <h2 className="text-title-md text-foreground font-medium">{tc.title}</h2>
-                    <Badge tone={statusDef.tone} icon={statusDef.icon}>
-                      {statusDef.label}
-                    </Badge>
-                  </div>
+        <TabsContent value="records" className="flex flex-col gap-6">
+          <TestCaseFilterBar features={features.filter((f) => f.status !== "archived")} />
+          <TestCaseRecordTable
+            project={project}
+            testCases={filteredTestCases}
+            allTestCases={allTestCases}
+            features={features}
+            grouping={grouping}
+            currentUrl={currentUrl}
+            hasActiveFilters={hasActiveFilters}
+          />
+        </TabsContent>
 
-                  {parentFeature && (
-                    <div className="flex items-center gap-1.5 text-body-sm text-foreground-secondary">
-                      <span className="text-foreground-muted">Feature:</span>
-                      <span className="font-medium text-foreground">{parentFeature.name}</span>
-                      <span className="text-mono-sm text-foreground-muted">({parentFeature.publicId})</span>
-                    </div>
-                  )}
-                </div>
-
-                {/* Steps */}
-                <div className="flex flex-col gap-2">
-                  <span className="text-eyebrow text-foreground-muted uppercase tracking-wider">
-                    Execution Steps
-                  </span>
-                  <ol className="list-decimal list-inside space-y-1.5 text-body-sm text-foreground-secondary">
-                    {tc.steps.map((step, idx) => (
-                      <li key={idx} className="pl-1">
-                        {step}
-                      </li>
-                    ))}
-                  </ol>
-                </div>
-
-                {/* Expected Result */}
-                <div className="flex flex-col gap-1 rounded-md border border-subtle bg-inset/30 p-3">
-                  <span className="text-eyebrow text-foreground-muted uppercase tracking-wider">
-                    Expected Result
-                  </span>
-                  <p className="text-body-sm text-foreground">{tc.expectedResult}</p>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      )}
+        <TabsContent value="generate">
+          <TestCaseGenerationPanel
+            projectSlug={project.slug}
+            project={{
+              name: project.name,
+              description: project.description,
+              appUrl: project.appUrl,
+              environment: project.environment,
+              repository: project.repository,
+            }}
+            approvedFeatures={approvedFeatures.map((f) => ({
+              publicId: f.publicId,
+              name: f.name,
+              description: f.description,
+              risk: f.risk,
+              roles: f.roles,
+              acceptanceCriteria: f.acceptanceCriteria,
+            }))}
+            existingTestCases={allTestCases.map((tc) => ({
+              publicId: tc.publicId,
+              featureId: features.find((f) => f.id === tc.featureId)?.publicId ?? "",
+              title: tc.title,
+              status: tc.status,
+            }))}
+            environments={candidateEnvironments}
+          />
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }

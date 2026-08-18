@@ -22,20 +22,38 @@ export async function generateMetadata({
 
 export default async function ProjectTestRunsPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ slug: string }>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const user = await getCurrentUser();
   if (!user) redirect("/sign-in");
 
   const { slug } = await params;
+  const query = await searchParams;
   const records = getProjectRecords(slug, user);
   if (!records) notFound();
 
   const { project, testRuns } = records;
+  const handedOffTestCaseIds =
+    typeof query.testCaseIds === "string" ? query.testCaseIds.split(",").filter(Boolean) : [];
 
   return (
     <div className="flex flex-col gap-8">
+      {handedOffTestCaseIds.length > 0 ? (
+        <div className="flex items-start gap-3 rounded-md border border-progress/30 bg-progress/10 p-4 text-body-sm text-foreground">
+          <Icon name="info" size={16} className="mt-0.5 shrink-0 text-progress" />
+          <p>
+            {handedOffTestCaseIds.length} test case{handedOffTestCaseIds.length === 1 ? "" : "s"} selected from{" "}
+            <Link href={`/projects/${project.slug}/test-cases`} className="underline hover:no-underline">
+              Test Cases
+            </Link>{" "}
+            ({handedOffTestCaseIds.join(", ")}). Run creation from a selection arrives in the next phase.
+          </p>
+        </div>
+      ) : null}
+
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-subtle pb-6">
         <div className="flex flex-col gap-1">

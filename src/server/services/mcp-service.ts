@@ -210,6 +210,7 @@ const toolActionLabel: Partial<Record<McpToolName, string>> = {
   health_check: "ran a health check over MCP",
   get_project_context: "read the project QA context over MCP",
   list_features: "listed features over MCP",
+  list_test_cases: "listed test cases over MCP",
 };
 
 function extractBearerToken(header: string | null): string | null {

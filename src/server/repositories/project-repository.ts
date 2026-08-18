@@ -1,7 +1,7 @@
 import "server-only";
 
 import { store } from "@/server/repositories/store";
-import type { Feature, Project } from "@/types/domain";
+import type { Feature, Project, TestCase } from "@/types/domain";
 
 /**
  * Every read is scoped by `ownerId` at this layer — not just filtered in the
@@ -102,6 +102,34 @@ export function reassignFeatureReferences(fromFeatureId: string, toFeatureId: st
 
 export function listTestCasesForProject(projectId: string) {
   return Array.from(store.testCases.values()).filter((tc) => tc.projectId === projectId);
+}
+
+/** Scoped by `projectId` so a public ID from another project can never resolve here. */
+export function findTestCaseByPublicId(projectId: string, publicId: string): TestCase | null {
+  return (
+    Array.from(store.testCases.values()).find(
+      (tc) => tc.projectId === projectId && tc.publicId === publicId,
+    ) ?? null
+  );
+}
+
+export function findTestCaseById(projectId: string, id: string): TestCase | null {
+  const testCase = store.testCases.get(id);
+  if (!testCase || testCase.projectId !== projectId) return null;
+  return testCase;
+}
+
+export function saveTestCase(testCase: TestCase): void {
+  store.testCases.set(testCase.id, testCase);
+}
+
+/** Every public ID already used with `prefix` in this project — the set `nextTestCasePublicId` scans for a free sequence number. */
+export function testCasePublicIdsWithPrefix(projectId: string, prefix: string): Set<string> {
+  const ids = new Set<string>();
+  for (const tc of store.testCases.values()) {
+    if (tc.projectId === projectId && tc.publicId.startsWith(`${prefix}-`)) ids.add(tc.publicId);
+  }
+  return ids;
 }
 
 export function listTestRunsForProject(projectId: string) {
