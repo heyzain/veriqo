@@ -617,6 +617,13 @@ const privateVaultIssue: Issue = {
   fixNote:
     "The vault-unlocked flag was stored in localStorage instead of the session store, so it survived sign-out. Moved the flag to sessionStorage and cleared it explicitly on sign-out.",
   rerunResultId: passingResult.id,
+  // The rerun that verified it (`focusedRerun`) resolved this cycle — no
+  // rerun is currently being tracked (Phase 7: cleared once verified/reopened).
+  rerunTestRunId: undefined,
+  createdBySource: "human",
+  createdByName: "Priya Nair",
+  createdAt: "2026-08-10T14:40:00.000Z",
+  updatedAt: "2026-08-12T10:05:30.000Z",
 };
 
 /**

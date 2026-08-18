@@ -6,6 +6,11 @@ import {
   mcpUpdateFeatureSchema,
 } from "@/features/features/schemas";
 import {
+  mcpListIssuesSchema,
+  mcpRecordIssueFixSchema,
+  mcpUpdateIssueStatusSchema,
+} from "@/features/issues/schemas";
+import {
   mcpCreateTestCaseSchema,
   mcpListTestCasesSchema,
   mcpUpdateTestCaseSchema,
@@ -16,18 +21,21 @@ import {
   listFeaturesForMcp,
   updateFeatureFromDiscovery,
 } from "@/server/services/feature-service";
+import { recordIssueFix, updateIssueStatus } from "@/server/services/issue-service";
 import {
   createTestCaseFromGeneration,
   listTestCasesForMcp,
   updateTestCaseFromGeneration,
 } from "@/server/services/test-case-service";
 import {
+  findFeatureById,
+  findTestCaseById,
   listFeaturesForProject,
   listIssuesForProject,
   listTestCasesForProject,
   listTestRunsForProject,
 } from "@/server/repositories/project-repository";
-import type { Feature, Project, TestCase } from "@/types/domain";
+import type { Feature, Issue, Project, TestCase } from "@/types/domain";
 
 /**
  * MCP tools available to a connected Claude client, project-scoped by
@@ -35,7 +43,10 @@ import type { Feature, Project, TestCase } from "@/types/domain";
  * `mcp-service.ts` has already authenticated a request's credential against.
  * `health_check`/`get_project_context` are the read-only Phase 3 tools;
  * `list_features`/`create_feature`/`update_feature` are Phase 4's
- * least-privilege additions (04-CONFIG-BLUEPRINT.md, "MCP rules").
+ * least-privilege additions; `list_issues`/`update_issue_status`/
+ * `record_issue_fix` are Phase 7's — deliberately narrow, since only a
+ * human/system action ever marks an issue ready for retest, creates its
+ * rerun, or verifies/reopens it (04-CONFIG-BLUEPRINT.md, "MCP rules").
  */
 export const mcpToolNames = [
   "health_check",
@@ -46,6 +57,9 @@ export const mcpToolNames = [
   "list_test_cases",
   "create_test_case",
   "update_test_case",
+  "list_issues",
+  "update_issue_status",
+  "record_issue_fix",
 ] as const;
 export type McpToolName = (typeof mcpToolNames)[number];
 
@@ -201,6 +215,51 @@ function updateTestCase(project: Project, input: unknown): McpToolRunResult {
   return toolOk({ testCase: toMcpTestCase(result.data.testCase, allFeatures) });
 }
 
+/** `Do not expose database IDs when stable public IDs are appropriate` (04-CONFIG-BLUEPRINT.md). */
+function toMcpIssue(issue: Issue, project: Project): Record<string, unknown> {
+  const feature = findFeatureById(project.id, issue.featureId);
+  const testCase = findTestCaseById(project.id, issue.testCaseId);
+
+  return {
+    issueId: issue.publicId,
+    title: issue.title,
+    status: issue.status,
+    severity: issue.severity,
+    featureId: feature?.publicId ?? null,
+    testCaseId: testCase?.publicId ?? null,
+    fixNote: issue.fixNote ?? null,
+  };
+}
+
+function listIssues(project: Project, input: unknown): McpToolRunResult {
+  const parsed = mcpListIssuesSchema.safeParse(input ?? {});
+  if (!parsed.success) return toolFail(parsed.error.issues[0]?.message ?? "Invalid input.");
+
+  const all = listIssuesForProject(project.id);
+  const issues = parsed.data.status ? all.filter((iss) => iss.status === parsed.data.status) : all;
+  return toolOk({ issues: issues.map((iss) => toMcpIssue(iss, project)) });
+}
+
+function updateIssueStatusTool(project: Project, input: unknown): McpToolRunResult {
+  const parsed = mcpUpdateIssueStatusSchema.safeParse(input);
+  if (!parsed.success) return toolFail(parsed.error.issues[0]?.message ?? "Invalid input.");
+
+  const result = updateIssueStatus(project, parsed.data.issueId, parsed.data.status, "Claude", "claude");
+  if (!result.ok) return toolFail(result.error);
+
+  return toolOk({ issue: toMcpIssue(result.data.issue, project) });
+}
+
+function recordIssueFixTool(project: Project, input: unknown): McpToolRunResult {
+  const parsed = mcpRecordIssueFixSchema.safeParse(input);
+  if (!parsed.success) return toolFail(parsed.error.issues[0]?.message ?? "Invalid input.");
+
+  const result = recordIssueFix(project, parsed.data.issueId, parsed.data.fixNote, "Claude", "claude");
+  if (!result.ok) return toolFail(result.error);
+
+  return toolOk({ issue: toMcpIssue(result.data.issue, project) });
+}
+
 export function runMcpTool(tool: McpToolName, project: Project, input: unknown): McpToolRunResult {
   switch (tool) {
     case "health_check":
@@ -219,5 +278,11 @@ export function runMcpTool(tool: McpToolName, project: Project, input: unknown):
       return createTestCase(project, input);
     case "update_test_case":
       return updateTestCase(project, input);
+    case "list_issues":
+      return listIssues(project, input);
+    case "update_issue_status":
+      return updateIssueStatusTool(project, input);
+    case "record_issue_fix":
+      return recordIssueFixTool(project, input);
   }
 }

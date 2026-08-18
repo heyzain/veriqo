@@ -6,6 +6,7 @@ import { redirect } from "next/navigation";
 import { parseCommaIds, submitTestResultSchema, testRunCreateFormSchema } from "@/features/test-runs/schemas";
 import { fieldErrorsFromZod, formErrorState, type ActionState } from "@/lib/forms/action-state";
 import { getCurrentUser } from "@/server/services/auth-service";
+import { applyRerunResultToIssuesForCase } from "@/server/services/issue-service";
 import { getProjectForOwner } from "@/server/services/project-service";
 import {
   createTestRun,
@@ -114,7 +115,7 @@ export type SubmitTestResultActionInput = {
 };
 
 export type SubmitTestResultActionResult =
-  | { ok: true; testRun: TestRun; progress: RunProgress }
+  | { ok: true; testRun: TestRun; progress: RunProgress; issueUpdate: { publicId: string; status: string } | null }
   | { ok: false; error: string };
 
 export async function submitTestResultAction(
@@ -143,9 +144,20 @@ export async function submitTestResultAction(
   );
   if (!result.ok) return { ok: false, error: result.error };
 
+  // Hard business rule (03-CLAUDE-RULES.md): a fix does not verify an issue —
+  // only an applicable passed rerun can. This is the one place a recorded
+  // result can close (or reopen) an issue's retest cycle.
+  const updatedIssue = applyRerunResultToIssuesForCase(project, result.data.testRun, input.testCaseId, result.data.result);
+  if (updatedIssue) revalidatePath(`/projects/${input.projectSlug}/issues/${updatedIssue.publicId}`);
+
   revalidatePath(`/projects/${input.projectSlug}/test-runs/${input.runId}`);
   revalidatePath(`/projects/${input.projectSlug}/test-runs`);
 
   const detail = getTestRunDetail(project, input.runId);
-  return { ok: true, testRun: result.data.testRun, progress: detail?.progress ?? { total: 0, notRun: 0, pass: 0, fail: 0, partial: 0, blocked: 0 } };
+  return {
+    ok: true,
+    testRun: result.data.testRun,
+    progress: detail?.progress ?? { total: 0, notRun: 0, pass: 0, fail: 0, partial: 0, blocked: 0 },
+    issueUpdate: updatedIssue ? { publicId: updatedIssue.publicId, status: updatedIssue.status } : null,
+  };
 }

@@ -217,7 +217,20 @@ export type Issue = {
   status: IssueStatus;
   severity: RiskLevel;
   fixNote?: string;
+  /** The `TestResult` that verified or reopened this issue — set once a tracked rerun resolves. */
   rerunResultId?: string;
+  /**
+   * The focused-rerun `TestRun` currently tracking this issue's retest
+   * cycle (Phase 7 Build: "Focused rerun creation from affected tests").
+   * Set when "Create focused rerun" runs, cleared once that rerun's result
+   * verifies or reopens the issue — so a stale rerun from an earlier cycle
+   * can never be mistaken for the applicable one.
+   */
+  rerunTestRunId?: string;
+  createdBySource: ActorType;
+  createdByName: string;
+  createdAt: string;
+  updatedAt: string;
 };
 
 export type ActivityEvent = {

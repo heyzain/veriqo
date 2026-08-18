@@ -2,7 +2,7 @@ import "server-only";
 
 import { randomUUID } from "node:crypto";
 
-import { nextTestRunPublicId } from "@/lib/ids/test-run-identifiers";
+import { nextTestRunPublicId, type TestRunPublicIdPrefix } from "@/lib/ids/test-run-identifiers";
 import { listActivityForProject, recordActivity } from "@/server/repositories/activity-repository";
 import {
   findTestCaseByPublicId,
@@ -131,6 +131,8 @@ export type CreateTestRunInput = {
   notes?: string;
   /** Test case public IDs, in the order the runner will step through them. */
   testCaseIds: string[];
+  /** `RERUN` for a focused rerun created from an issue (`issue-service.createFocusedRerun`); defaults to `RUN`. */
+  publicIdPrefix?: TestRunPublicIdPrefix;
 };
 
 export function createTestRun(
@@ -153,7 +155,7 @@ export function createTestRun(
   const now = new Date().toISOString();
   const testRun: TestRun = {
     id: randomUUID(),
-    publicId: nextTestRunPublicId(testRunPublicIds(project.id)),
+    publicId: nextTestRunPublicId(input.publicIdPrefix ?? "RUN", testRunPublicIds(project.id)),
     projectId: project.id,
     name: input.name.trim(),
     status: "planned",

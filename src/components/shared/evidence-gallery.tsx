@@ -19,7 +19,9 @@ export type EvidenceGalleryProps = {
  * for image evidence, a labeled file chip otherwise, always with the file
  * name as accessible alt/label text rather than a bare icon
  * (03-CLAUDE-RULES.md, "Icons never carry meaning without accessible
- * names").
+ * names"). Shared across Test Runs (evidence on a result) and Issues
+ * (evidence carried through from the origin result) — a cross-domain
+ * pattern, so it lives in `components/shared/` rather than one feature.
  */
 export function EvidenceGallery({ evidence, onRemove, emptyMessage = "No evidence attached.", className }: EvidenceGalleryProps) {
   if (evidence.length === 0) {

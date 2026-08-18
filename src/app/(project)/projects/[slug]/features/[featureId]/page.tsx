@@ -137,7 +137,7 @@ export default async function FeatureDetailPage({
                 {issues.map((issue) => (
                   <Link
                     key={issue.id}
-                    href={`/projects/${project.slug}/issues`}
+                    href={`/projects/${project.slug}/issues/${issue.publicId}`}
                     className="flex items-center justify-between gap-3 px-4 py-3 transition-fast hover:bg-inset/30"
                   >
                     <div className="flex items-center gap-2.5 min-w-0">

@@ -1,7 +1,7 @@
 import "server-only";
 
 import { store } from "@/server/repositories/store";
-import type { Feature, Project, TestCase, TestResult, TestRun } from "@/types/domain";
+import type { Feature, Issue, Project, TestCase, TestResult, TestRun } from "@/types/domain";
 
 /**
  * Every read is scoped by `ownerId` at this layer — not just filtered in the
@@ -168,6 +168,15 @@ export function listTestResultsForRun(testRunId: string): TestResult[] {
   return Array.from(store.testResults.values()).filter((result) => result.testRunId === testRunId);
 }
 
+/** Scoped by `projectId` via the owning run — a result `id` from another project can never resolve here. */
+export function findTestResultById(projectId: string, id: string): TestResult | null {
+  const result = store.testResults.get(id);
+  if (!result) return null;
+  const testRun = store.testRuns.get(result.testRunId);
+  if (!testRun || testRun.projectId !== projectId) return null;
+  return result;
+}
+
 export function findTestResult(testRunId: string, testCaseId: string): TestResult | null {
   return (
     Array.from(store.testResults.values()).find(
@@ -182,5 +191,40 @@ export function saveTestResult(result: TestResult): void {
 
 export function listIssuesForProject(projectId: string) {
   return Array.from(store.issues.values()).filter((iss) => iss.projectId === projectId);
+}
+
+/** Scoped by `projectId` so a public ID from another project can never resolve here. */
+export function findIssueByPublicId(projectId: string, publicId: string): Issue | null {
+  return (
+    Array.from(store.issues.values()).find((iss) => iss.projectId === projectId && iss.publicId === publicId) ?? null
+  );
+}
+
+export function findIssueById(projectId: string, id: string): Issue | null {
+  const issue = store.issues.get(id);
+  if (!issue || issue.projectId !== projectId) return null;
+  return issue;
+}
+
+/** The issue already tracking a given failed result, if any — used to avoid creating a duplicate issue for the same failure. */
+export function findIssueByOriginResultId(projectId: string, originResultId: string): Issue | null {
+  return (
+    Array.from(store.issues.values()).find(
+      (iss) => iss.projectId === projectId && iss.originResultId === originResultId,
+    ) ?? null
+  );
+}
+
+export function saveIssue(issue: Issue): void {
+  store.issues.set(issue.id, issue);
+}
+
+/** Every `ISS-*` public ID already used in this project — the set `nextIssuePublicId` scans for the next sequence number. */
+export function issuePublicIds(projectId: string): Set<string> {
+  const ids = new Set<string>();
+  for (const issue of store.issues.values()) {
+    if (issue.projectId === projectId) ids.add(issue.publicId);
+  }
+  return ids;
 }
 

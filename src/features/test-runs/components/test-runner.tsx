@@ -9,7 +9,7 @@ import { Icon } from "@/components/ui/icon";
 import { Textarea } from "@/components/ui/input";
 import { toast } from "@/components/ui/toast";
 import { resultStatuses, testRunStatuses, type ResultStatus } from "@/config/status.config";
-import { EvidenceGallery } from "@/features/test-runs/components/evidence-gallery";
+import { EvidenceGallery } from "@/components/shared/evidence-gallery";
 import { EvidenceUploadButton } from "@/features/test-runs/components/evidence-upload-button";
 import { RunProgressBar } from "@/features/test-runs/components/run-progress-bar";
 import { pauseTestRunAction, submitTestResultAction } from "@/features/test-runs/actions";
@@ -151,6 +151,17 @@ export function TestRunner({ projectSlug, testRun, items, features, progress: in
     setRunStatus(response.testRun.status);
 
     toast({ title: `Recorded ${resultStatuses[status].label.toLowerCase()} for ${current.testCase.publicId}`, variant: status === "pass" ? "pass" : status === "fail" ? "fail" : "partial" });
+
+    if (response.issueUpdate) {
+      const verified = response.issueUpdate.status === "verified";
+      toast({
+        title: verified
+          ? `${response.issueUpdate.publicId} verified`
+          : `${response.issueUpdate.publicId} reopened — the rerun didn't pass`,
+        description: verified ? "The passing rerun confirmed the fix." : "Investigate again before the next retest.",
+        variant: verified ? "pass" : "fail",
+      });
+    }
 
     const nextIncomplete = runItems.findIndex((item, index) => index > currentIndex && item.result.status === "notRun");
     if (nextIncomplete !== -1) {

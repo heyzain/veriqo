@@ -8,13 +8,15 @@ import { SourceBadge } from "@/components/shared/source-badge";
 import { StatusBadge } from "@/components/shared/status-badge";
 import { Icon } from "@/components/ui/icon";
 import { resultStatuses, testRunStatuses } from "@/config/status.config";
-import { EvidenceGallery } from "@/features/test-runs/components/evidence-gallery";
+import { EvidenceGallery } from "@/components/shared/evidence-gallery";
+import { CreateIssueTrigger } from "@/features/issues/components/create-issue-trigger";
 import { RunLifecycleActions } from "@/features/test-runs/components/run-lifecycle-actions";
 import { RunProgressBar } from "@/features/test-runs/components/run-progress-bar";
 import { formatDateTime } from "@/lib/format/date";
 import { getCurrentUser } from "@/server/services/auth-service";
 import { getProjectForOwner } from "@/server/services/project-service";
 import { listFeaturesForProject } from "@/server/services/feature-service";
+import { listIssuesForProject } from "@/server/services/issue-service";
 import { getTestRunActivity, getTestRunDetail } from "@/server/services/test-run-service";
 
 export async function generateMetadata({
@@ -47,6 +49,7 @@ export default async function TestRunDetailPage({
   const features = listFeaturesForProject(project);
   const activity = getTestRunActivity(project, testRun);
   const statusDef = testRunStatuses[testRun.status];
+  const issueByOriginResultId = new Map(listIssuesForProject(project).map((issue) => [issue.originResultId, issue.publicId]));
 
   return (
     <div className="flex max-w-5xl flex-col gap-8">
@@ -146,9 +149,21 @@ export default async function TestRunDetailPage({
                   {result.evidence.length > 0 ? <EvidenceGallery evidence={result.evidence} /> : null}
 
                   {result.status !== "notRun" ? (
-                    <p className="text-body-sm text-foreground-muted">
-                      Recorded by {result.recordedByName ?? "—"} · {formatDateTime(result.recordedAt)}
-                    </p>
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <p className="text-body-sm text-foreground-muted">
+                        Recorded by {result.recordedByName ?? "—"} · {formatDateTime(result.recordedAt)}
+                      </p>
+                      {result.status === "fail" || result.status === "partial" || result.status === "blocked" ? (
+                        <CreateIssueTrigger
+                          projectSlug={project.slug}
+                          testRunPublicId={testRun.publicId}
+                          testCasePublicId={testCase.publicId}
+                          defaultTitle={`${testCase.title} — failed in ${testRun.name}`}
+                          defaultSeverity={feature?.risk ?? "medium"}
+                          existingIssuePublicId={issueByOriginResultId.get(result.id)}
+                        />
+                      ) : null}
+                    </div>
                   ) : null}
                 </div>
               );
