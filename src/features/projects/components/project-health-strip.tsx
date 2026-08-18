@@ -2,15 +2,17 @@ import Link from "next/link";
 
 import { Badge } from "@/components/ui/badge";
 import { Icon } from "@/components/ui/icon";
+import { mcpConnectionStatuses, type McpConnectionStatus } from "@/config/status.config";
 import type { ProjectSummary } from "@/server/services/project-service";
 
 export type ProjectHealthStripProps = {
   summary: ProjectSummary;
+  mcpStatus: McpConnectionStatus;
 };
 
-export function ProjectHealthStrip({ summary }: ProjectHealthStripProps) {
+export function ProjectHealthStrip({ summary, mcpStatus }: ProjectHealthStripProps) {
   const { project } = summary;
-  const isClaudeConnected = project.setupStepsCompleted >= 2;
+  const mcpStatusDef = mcpConnectionStatuses[mcpStatus];
 
   return (
     <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-5">
@@ -100,11 +102,8 @@ export function ProjectHealthStrip({ summary }: ProjectHealthStripProps) {
           <Icon name="mcp" size={15} className="text-foreground-muted group-hover:text-foreground transition-fast" />
         </div>
         <div className="flex items-center gap-2">
-          <Badge
-            tone={isClaudeConnected ? "pass" : "neutral"}
-            icon={isClaudeConnected ? "approved" : "planned"}
-          >
-            {isClaudeConnected ? "Connected" : "Disconnected"}
+          <Badge tone={mcpStatusDef.tone} icon={mcpStatusDef.icon}>
+            {mcpStatusDef.label}
           </Badge>
         </div>
       </Link>

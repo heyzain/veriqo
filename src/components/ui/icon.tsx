@@ -19,6 +19,7 @@ import {
   FileInput,
   FlaskConical,
   Info,
+  KeyRound,
   LayoutDashboard,
   ListChecks,
   Loader2,
@@ -34,6 +35,7 @@ import {
   Settings,
   Sparkles,
   SquareUser,
+  Trash2,
   User,
   X,
 } from "lucide-react";
@@ -93,6 +95,8 @@ const registry = {
   eyeOff: EyeOff,
   more: MoreHorizontal,
   warning: AlertTriangle,
+  key: KeyRound,
+  revoke: Trash2,
 } as const satisfies Record<string, LucideIcon>;
 
 export type IconName = keyof typeof registry;

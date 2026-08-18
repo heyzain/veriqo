@@ -5,11 +5,13 @@ import { usePathname } from "next/navigation";
 
 import { Icon } from "@/components/ui/icon";
 import { projectNavigation } from "@/config/navigation.config";
+import type { McpConnectionStatus } from "@/config/status.config";
 import { ConnectionBadge } from "@/features/projects/components/connection-badge";
 import type { ActivityEvent, Project } from "@/types/domain";
 
 export type ProjectTopBarProps = {
   project: Project;
+  mcpStatus: McpConnectionStatus;
   lastActivity?: ActivityEvent;
   onOpenSearch: () => void;
   onOpenMobileNav: () => void;
@@ -17,6 +19,7 @@ export type ProjectTopBarProps = {
 
 export function ProjectTopBar({
   project,
+  mcpStatus,
   lastActivity,
   onOpenSearch,
   onOpenMobileNav,
@@ -32,7 +35,6 @@ export function ProjectTopBar({
   });
 
   const currentPageLabel = currentNav ? currentNav.label : "Overview";
-  const isClaudeConnected = project.setupStepsCompleted >= 2;
 
   return (
     <header className="sticky top-0 z-20 flex h-14 w-full items-center justify-between border-b border-subtle bg-surface/90 px-4 sm:px-6 backdrop-blur-sm">
@@ -89,7 +91,7 @@ export function ProjectTopBar({
 
         {/* Claude Connection Badge */}
         <div className="hidden sm:block">
-          <ConnectionBadge connected={isClaudeConnected} projectSlug={project.slug} />
+          <ConnectionBadge status={mcpStatus} projectSlug={project.slug} />
         </div>
 
         {/* Last Activity indicator */}

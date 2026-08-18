@@ -3,6 +3,7 @@ import { notFound, redirect } from "next/navigation";
 
 import { ProjectShell } from "@/features/projects/components/project-shell";
 import { getCurrentUser } from "@/server/services/auth-service";
+import { getMcpConnectionSnapshot } from "@/server/services/mcp-service";
 import {
   getLastActivityForProject,
   getProjectForOwner,
@@ -25,12 +26,14 @@ export default async function ProjectLayout({
 
   const { active: activeProjects } = listProjects(user);
   const lastActivity = getLastActivityForProject(project.id);
+  const mcpStatus = getMcpConnectionSnapshot(project).status;
 
   return (
     <ProjectShell
       project={project}
       projects={activeProjects}
       user={user}
+      mcpStatus={mcpStatus}
       lastActivity={lastActivity}
     >
       {children}

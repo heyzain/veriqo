@@ -195,6 +195,42 @@ export const issueStatuses: StatusMap<IssueStatus> = {
 };
 
 /**
+ * Claude MCP connection status (Phase 3), derived server-side in
+ * `mcp-service.getMcpConnectionSnapshot` from the active credential plus the
+ * last recorded connection attempt — never from `setupStepsCompleted`, which
+ * only proves the step was reached once, not that the current credential
+ * still works.
+ */
+export type McpConnectionStatus = "notConfigured" | "pendingFirstConnection" | "connected" | "error";
+
+export const mcpConnectionStatuses: StatusMap<McpConnectionStatus> = {
+  notConfigured: {
+    label: "Not connected",
+    tone: "neutral",
+    icon: "planned",
+    transitions: ["pendingFirstConnection"],
+  },
+  pendingFirstConnection: {
+    label: "Awaiting first connection",
+    tone: "progress",
+    icon: "inProgress",
+    transitions: ["connected", "error"],
+  },
+  connected: {
+    label: "Connected",
+    tone: "pass",
+    icon: "approved",
+    transitions: ["error", "notConfigured"],
+  },
+  error: {
+    label: "Connection error",
+    tone: "fail",
+    icon: "fail",
+    transitions: ["connected", "notConfigured"],
+  },
+};
+
+/**
  * Actor types, shared by the activity event contract (04-CONFIG-BLUEPRINT.md)
  * and any record-provenance UI (e.g. the future `SourceBadge`).
  */

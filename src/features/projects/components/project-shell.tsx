@@ -3,6 +3,7 @@
 import { useEffect, useState, type ReactNode } from "react";
 
 import { Drawer, DrawerContent } from "@/components/ui/drawer";
+import type { McpConnectionStatus } from "@/config/status.config";
 import { ProjectSearchDialog } from "@/features/projects/components/project-search-dialog";
 import { ProjectSidebar } from "@/features/projects/components/project-sidebar";
 import { ProjectTopBar } from "@/features/projects/components/project-top-bar";
@@ -13,6 +14,7 @@ export type ProjectShellProps = {
   project: Project;
   projects: Project[];
   user: PublicUser;
+  mcpStatus: McpConnectionStatus;
   lastActivity?: ActivityEvent;
   children: ReactNode;
 };
@@ -21,6 +23,7 @@ export function ProjectShell({
   project,
   projects,
   user,
+  mcpStatus,
   lastActivity,
   children,
 }: ProjectShellProps) {
@@ -77,6 +80,7 @@ export function ProjectShell({
       <div className="flex flex-1 flex-col min-w-0">
         <ProjectTopBar
           project={project}
+          mcpStatus={mcpStatus}
           lastActivity={lastActivity}
           onOpenSearch={() => setSearchOpen(true)}
           onOpenMobileNav={() => setMobileNavOpen(true)}

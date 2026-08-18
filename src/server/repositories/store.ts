@@ -1,6 +1,6 @@
 import "server-only";
 
-import type { ActivityEvent, Project } from "@/types/domain";
+import type { ActivityEvent, McpConnectionState, McpCredential, Project } from "@/types/domain";
 import type { AuthToken, Invite, User } from "@/types/auth";
 
 /**
@@ -23,6 +23,9 @@ type Store = {
   testResults: Map<string, import("@/types/domain").TestResult>;
   issues: Map<string, import("@/types/domain").Issue>;
   activity: ActivityEvent[];
+  mcpCredentials: Map<string, McpCredential>;
+  /** Keyed by `projectId` — one latest-attempt snapshot per project. */
+  mcpConnectionStates: Map<string, McpConnectionState>;
   seeded: boolean;
 };
 
@@ -39,6 +42,8 @@ function createStore(): Store {
     testResults: new Map(),
     issues: new Map(),
     activity: [],
+    mcpCredentials: new Map(),
+    mcpConnectionStates: new Map(),
     seeded: false,
   };
 }

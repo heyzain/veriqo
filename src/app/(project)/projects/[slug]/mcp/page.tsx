@@ -2,12 +2,14 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Icon } from "@/components/ui/icon";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { productConfig } from "@/config/product.config";
+import { McpActivityList } from "@/features/mcp/components/mcp-activity-list";
+import { McpConnectionSummary } from "@/features/mcp/components/mcp-connection-summary";
+import { McpCredentialPanel } from "@/features/mcp/components/mcp-credential-panel";
+import { McpSetupInstructions } from "@/features/mcp/components/mcp-setup-instructions";
 import { getCurrentUser } from "@/server/services/auth-service";
+import { getMcpConnectionSnapshot } from "@/server/services/mcp-service";
 import { getProjectForOwner } from "@/server/services/project-service";
 
 export async function generateMetadata({
@@ -32,134 +34,60 @@ export default async function ProjectMcpPage({
   const project = getProjectForOwner(slug, user);
   if (!project) notFound();
 
-  const isConnected = project.setupStepsCompleted >= 2;
-
-  const mcpServerKey = productConfig.name.toLowerCase();
-  const mcpEndpoint = `${productConfig.urls.app}/api/mcp/${project.slug}`;
-  const claudeCodeCommand = `claude mcp add ${mcpServerKey} -- ${mcpEndpoint}`;
-  const claudeDesktopConfig = JSON.stringify(
-    {
-      mcpServers: {
-        [mcpServerKey]: {
-          url: mcpEndpoint,
-          env: {
-            VERIQO_PROJECT_CODE: project.publicId,
-          },
-        },
-      },
-    },
-    null,
-    2,
-  );
+  const snapshot = getMcpConnectionSnapshot(project);
+  const isConnected = snapshot.status === "connected";
 
   return (
-    <div className="flex flex-col gap-8 max-w-4xl">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-subtle pb-6">
+    <div className="flex max-w-4xl flex-col gap-8">
+      {/* Header — the one dominant action is "generate a credential" until
+          connected; once connected, it moves forward to feature discovery. */}
+      <div className="flex flex-col gap-4 border-b border-subtle pb-6 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex flex-col gap-1">
-          <div className="flex items-center gap-2.5">
-            <h1 className="text-title-lg font-serif text-foreground">Claude MCP Connection</h1>
-            <Badge
-              tone={isConnected ? "pass" : "neutral"}
-              icon={isConnected ? "approved" : "planned"}
-            >
-              {isConnected ? "Connected" : "Setup required"}
-            </Badge>
-          </div>
+          <h1 className="font-serif text-title-lg text-foreground">Claude MCP Connection</h1>
           <p className="text-body text-foreground-secondary">
-            Connect Claude Code or Claude Desktop to {project.name} through the Model Context Protocol.
+            Connect Claude Code or Claude Desktop to {project.name} through the Model Context
+            Protocol.
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
-          <Button asChild intent="secondary" size="md">
+        {isConnected ? (
+          <Button asChild intent="primary" size="md">
             <Link href={`/projects/${project.slug}/features`}>
               <span>Next: Discover features</span>
               <Icon name="chevronRight" size={14} />
             </Link>
           </Button>
-        </div>
+        ) : null}
       </div>
 
-      {/* Connection State Card */}
-      <div className="flex flex-col gap-4 rounded-lg border border-subtle bg-surface p-6">
-        <div className="flex items-start justify-between gap-4">
-          <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-md bg-forest text-foreground-on-dark shadow-sm">
-              <Icon name="mcp" size={20} />
-            </div>
-            <div>
-              <h2 className="text-body font-medium text-foreground">Project MCP Endpoint</h2>
-              <p className="text-mono-sm text-foreground-muted text-[12px]">
-                Endpoint: {mcpEndpoint}
-              </p>
-            </div>
-          </div>
-          <Badge tone={isConnected ? "pass" : "neutral"}>
-            {isConnected ? "Active" : "Ready to connect"}
-          </Badge>
-        </div>
+      <McpConnectionSummary
+        status={snapshot.status}
+        lastAttemptAt={snapshot.lastAttemptAt}
+        lastAttemptError={snapshot.lastAttemptError}
+        lastSuccessAt={snapshot.lastSuccessAt}
+      />
 
-        <div className="rounded-md border border-subtle bg-inset/40 p-4">
-          <div className="flex flex-col gap-2">
-            <span className="text-eyebrow text-foreground-muted uppercase tracking-wider">
-              Project Credential
-            </span>
-            <div className="flex items-center gap-2.5 rounded bg-surface border border-subtle px-3 py-2.5 text-body-sm text-foreground-secondary">
-              <Icon name="info" size={15} className="text-foreground-muted shrink-0" />
-              <span>
-                A project-scoped credential is issued, masked by default, and revocable once
-                Claude MCP connection setup is available.
-              </span>
-            </div>
-          </div>
-        </div>
-      </div>
+      <McpCredentialPanel projectSlug={project.slug} credential={snapshot.credential} />
 
-      {/* Setup Instructions Tabs */}
       <div className="flex flex-col gap-4">
-        <h2 className="text-title-md text-foreground">Configuration Instructions</h2>
+        <h2 className="text-title-md text-foreground">Configuration instructions</h2>
+        <McpSetupInstructions projectSlug={project.slug} projectName={project.name} />
+      </div>
 
-        <Tabs defaultValue="claude-code">
-          <TabsList>
-            <TabsTrigger value="claude-code">Claude Code CLI</TabsTrigger>
-            <TabsTrigger value="claude-desktop">Claude Desktop</TabsTrigger>
-          </TabsList>
-
-          <TabsContent value="claude-code" className="pt-4">
-            <div className="flex flex-col gap-4 rounded-lg border border-subtle bg-surface p-5">
-              <div>
-                <h3 className="text-body font-medium text-foreground">1. Run MCP command in terminal</h3>
-                <p className="text-body-sm text-foreground-muted">
-                  Execute this command in your project directory to register the Veriqo MCP server:
-                </p>
-              </div>
-
-              <pre className="overflow-x-auto rounded-md bg-forest-0 p-4 text-mono-sm text-foreground-on-dark font-mono text-[13px]">
-                {claudeCodeCommand}
-              </pre>
-
-              <div className="border-t border-subtle pt-3 text-body-sm text-foreground-secondary">
-                Once connected, Claude can read test requirements, save discovered features, and submit execution results directly to {project.name}.
-              </div>
-            </div>
-          </TabsContent>
-
-          <TabsContent value="claude-desktop" className="pt-4">
-            <div className="flex flex-col gap-4 rounded-lg border border-subtle bg-surface p-5">
-              <div>
-                <h3 className="text-body font-medium text-foreground">Claude Desktop Configuration</h3>
-                <p className="text-body-sm text-foreground-muted">
-                  Add this server configuration to your <code className="text-mono-sm">claude_desktop_config.json</code> file:
-                </p>
-              </div>
-
-              <pre className="overflow-x-auto rounded-md bg-forest-0 p-4 text-mono-sm text-foreground-on-dark font-mono text-[13px]">
-                {claudeDesktopConfig}
-              </pre>
-            </div>
-          </TabsContent>
-        </Tabs>
+      <div className="flex flex-col gap-4 rounded-lg border border-subtle bg-surface p-6">
+        <div className="flex items-center justify-between border-b border-subtle pb-3">
+          <div className="flex items-center gap-2">
+            <Icon name="mcp" size={16} className="text-foreground-muted" />
+            <h2 className="text-title-md text-foreground">Recent MCP activity</h2>
+          </div>
+          <Link
+            href={`/projects/${project.slug}/activity`}
+            className="text-body-sm text-action hover:underline"
+          >
+            View full activity log →
+          </Link>
+        </div>
+        <McpActivityList activity={snapshot.recentActivity} />
       </div>
     </div>
   );

@@ -6,11 +6,13 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Icon } from "@/components/ui/icon";
 import { totalSetupSteps } from "@/config/setup-steps.config";
+import { mcpConnectionStatuses } from "@/config/status.config";
 import { ProjectHealthStrip } from "@/features/projects/components/project-health-strip";
 import { ReleaseNarrativePanel } from "@/features/projects/components/release-narrative-panel";
 import { SetupPath } from "@/features/projects/components/setup-path";
 import { formatDate } from "@/lib/format/date";
 import { getCurrentUser } from "@/server/services/auth-service";
+import { getMcpConnectionSnapshot } from "@/server/services/mcp-service";
 import { getProjectRecords, getProjectSummary } from "@/server/services/project-service";
 
 export async function generateMetadata({
@@ -40,7 +42,7 @@ export default async function ProjectOverviewPage({
 
   const { project } = summary;
   const isFullySetUp = project.setupStepsCompleted >= totalSetupSteps;
-  const isClaudeConnected = project.setupStepsCompleted >= 2;
+  const mcpSnapshot = getMcpConnectionSnapshot(project);
 
   return (
     <div className="flex flex-col gap-8">
@@ -102,7 +104,7 @@ export default async function ProjectOverviewPage({
         /* Populated state: Release narrative + Health strip + Connected records */
         <div className="flex flex-col gap-8">
           {/* Health Strip */}
-          <ProjectHealthStrip summary={summary} />
+          <ProjectHealthStrip summary={summary} mcpStatus={mcpSnapshot.status} />
 
           {/* Release Readiness Narrative */}
           <ReleaseNarrativePanel records={records} />
@@ -195,7 +197,7 @@ export default async function ProjectOverviewPage({
                   href={`/projects/${project.slug}/mcp`}
                   className="flex items-center justify-between text-body-sm p-2 rounded hover:bg-inset text-foreground-secondary hover:text-foreground transition-fast"
                 >
-                  <span>Claude MCP {isClaudeConnected ? "connected" : "not connected"}</span>
+                  <span>Claude MCP: {mcpConnectionStatuses[mcpSnapshot.status].label}</span>
                   <Icon name="chevronRight" size={14} className="text-foreground-muted" />
                 </Link>
               </div>

@@ -3,7 +3,7 @@ import "server-only";
 import { hashPassword } from "@/lib/auth/password";
 import { linkVaultSeed } from "@/lib/mock/linkvault";
 import { store } from "@/server/repositories/store";
-import type { Project } from "@/types/domain";
+import type { McpConnectionState, McpCredential, Project } from "@/types/domain";
 import type { Invite, User } from "@/types/auth";
 
 /**
@@ -171,6 +171,154 @@ export function ensureSeeded(): void {
       entityType: "project",
       entityId: harborlineOps.id,
       createdAt: harborlineOps.createdAt,
+    },
+  );
+
+  // Claude MCP credentials + connection state (Phase 3) — one seeded example
+  // per reachable status so the connected/pending/error/not-configured
+  // states are all visible without manually reproducing them by hand:
+  // LinkVault is connected, Beacon CRM shows a failed attempt against a
+  // still-active credential (the "error" state), Northwind's credential was
+  // revoked when the project was archived (back to "not configured" but
+  // with audit history), and Harborline has never generated one at all.
+  const linkVaultCredential: McpCredential = {
+    id: "cred-linkvault",
+    projectId: linkVault.id,
+    status: "active",
+    secretHash: hashPassword("seed-only-not-a-real-secret-linkvault"),
+    displayPrefix: "vrq_live_9f2a",
+    displaySuffix: "c3d1",
+    createdAt: "2026-07-01T09:05:00.000Z",
+    createdByName: priya.name,
+  };
+  store.mcpCredentials.set(linkVaultCredential.id, linkVaultCredential);
+  store.mcpConnectionStates.set(linkVault.id, {
+    projectId: linkVault.id,
+    lastAttemptAt: "2026-08-18T07:12:00.000Z",
+    lastAttemptStatus: "success",
+    lastAttemptCredentialId: linkVaultCredential.id,
+    lastAttemptTool: "health_check",
+    lastSuccessAt: "2026-08-18T07:12:00.000Z",
+    lastSuccessCredentialId: linkVaultCredential.id,
+  } satisfies McpConnectionState);
+
+  const beaconCredential: McpCredential = {
+    id: "cred-beacon",
+    projectId: beaconCrm.id,
+    status: "active",
+    secretHash: hashPassword("seed-only-not-a-real-secret-beacon"),
+    displayPrefix: "vrq_live_4b7e",
+    displaySuffix: "a802",
+    createdAt: "2026-07-20T11:35:00.000Z",
+    createdByName: priya.name,
+  };
+  store.mcpCredentials.set(beaconCredential.id, beaconCredential);
+  store.mcpConnectionStates.set(beaconCrm.id, {
+    projectId: beaconCrm.id,
+    lastAttemptAt: "2026-08-17T15:48:00.000Z",
+    lastAttemptStatus: "error",
+    lastAttemptCredentialId: beaconCredential.id,
+    lastAttemptTool: "health_check",
+    lastAttemptError: "Invalid or revoked credential.",
+  } satisfies McpConnectionState);
+
+  const northwindRevokedCredential: McpCredential = {
+    id: "cred-northwind",
+    projectId: northwindStorefront.id,
+    status: "revoked",
+    secretHash: hashPassword("seed-only-not-a-real-secret-northwind"),
+    displayPrefix: "vrq_live_2c91",
+    displaySuffix: "77fe",
+    createdAt: "2026-05-02T09:20:00.000Z",
+    createdByName: priya.name,
+    revokedAt: "2026-06-15T16:00:00.000Z",
+    revokedByName: priya.name,
+  };
+  store.mcpCredentials.set(northwindRevokedCredential.id, northwindRevokedCredential);
+
+  // Harborline Ops (Sam) intentionally has no credential and no MCP
+  // activity — the "not configured", empty-activity state.
+
+  store.activity.push(
+    {
+      id: "activity-linkvault-mcp-01",
+      projectId: linkVault.id,
+      actorType: "human",
+      actorName: priya.name,
+      action: "issued a new Claude MCP credential",
+      entityType: "mcpConnection",
+      entityId: linkVaultCredential.id,
+      createdAt: linkVaultCredential.createdAt,
+    },
+    {
+      id: "activity-linkvault-mcp-02",
+      projectId: linkVault.id,
+      actorType: "claude",
+      actorName: "Claude",
+      action: "ran a health check over MCP",
+      entityType: "mcpConnection",
+      entityId: linkVaultCredential.id,
+      createdAt: "2026-07-01T09:08:00.000Z",
+    },
+    {
+      id: "activity-linkvault-mcp-03",
+      projectId: linkVault.id,
+      actorType: "system",
+      actorName: "Veriqo",
+      action: "marked Claude MCP as connected after a verified request",
+      entityType: "mcpConnection",
+      entityId: linkVaultCredential.id,
+      createdAt: "2026-07-01T09:08:01.000Z",
+    },
+    {
+      id: "activity-linkvault-mcp-04",
+      projectId: linkVault.id,
+      actorType: "claude",
+      actorName: "Claude",
+      action: "ran a health check over MCP",
+      entityType: "mcpConnection",
+      entityId: linkVaultCredential.id,
+      createdAt: "2026-08-18T07:12:00.000Z",
+    },
+    {
+      id: "activity-beacon-mcp-01",
+      projectId: beaconCrm.id,
+      actorType: "human",
+      actorName: priya.name,
+      action: "issued a new Claude MCP credential",
+      entityType: "mcpConnection",
+      entityId: beaconCredential.id,
+      createdAt: beaconCredential.createdAt,
+    },
+    {
+      id: "activity-beacon-mcp-02",
+      projectId: beaconCrm.id,
+      actorType: "system",
+      actorName: "Veriqo",
+      action: "rejected an MCP connection attempt (invalid or revoked credential)",
+      entityType: "mcpConnection",
+      entityId: beaconCredential.id,
+      createdAt: "2026-08-17T15:48:00.000Z",
+    },
+    {
+      id: "activity-northwind-mcp-01",
+      projectId: northwindStorefront.id,
+      actorType: "human",
+      actorName: priya.name,
+      action: "issued a new Claude MCP credential",
+      entityType: "mcpConnection",
+      entityId: northwindRevokedCredential.id,
+      createdAt: northwindRevokedCredential.createdAt,
+    },
+    {
+      id: "activity-northwind-mcp-02",
+      projectId: northwindStorefront.id,
+      actorType: "human",
+      actorName: priya.name,
+      action: "revoked the Claude MCP credential",
+      entityType: "mcpConnection",
+      entityId: northwindRevokedCredential.id,
+      createdAt: "2026-06-15T16:00:00.000Z",
     },
   );
 

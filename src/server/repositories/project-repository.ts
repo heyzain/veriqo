@@ -25,6 +25,17 @@ export function findProjectByIdForOwner(id: string, ownerId: string): Project | 
   return project;
 }
 
+/**
+ * Unscoped slug lookup for the Claude MCP route handler
+ * (`app/api/mcp/[slug]/route.ts`), which authenticates a request by its
+ * project-scoped credential rather than a signed-in owner session — there is
+ * no `PublicUser` to check ownership against. The credential itself is the
+ * authorization boundary; see `server/services/mcp-service.ts`.
+ */
+export function findProjectBySlug(slug: string): Project | null {
+  return Array.from(store.projects.values()).find((p) => p.slug === slug) ?? null;
+}
+
 export function allSlugsAndCodes(): { slugs: Set<string>; codes: Set<string> } {
   const slugs = new Set<string>();
   const codes = new Set<string>();

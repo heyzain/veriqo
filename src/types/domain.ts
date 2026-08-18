@@ -105,3 +105,49 @@ export type ActivityEvent = {
   metadata?: Record<string, unknown>;
   createdAt: string;
 };
+
+/**
+ * Project-scoped Claude MCP credential (Phase 3). Only one `active`
+ * credential exists per project at a time — issuing a new one revokes the
+ * previous (03-CLAUDE-RULES.md, "Project-specific, revocable credentials").
+ * `secretHash` never leaves the server; `displayPrefix`/`displaySuffix` are
+ * the only fragments of the plaintext kept for masked display
+ * (04-CONFIG-BLUEPRINT.md security requirement: "Never log or return full
+ * secrets after initial issuance").
+ */
+export type McpCredentialStatus = "active" | "revoked";
+
+export type McpCredential = {
+  id: string;
+  projectId: string;
+  status: McpCredentialStatus;
+  secretHash: string;
+  displayPrefix: string;
+  displaySuffix: string;
+  createdAt: string;
+  createdByName: string;
+  revokedAt?: string;
+  revokedByName?: string;
+};
+
+/** `McpCredential` with the hash stripped — the only shape allowed to reach a client component. */
+export type PublicMcpCredential = Omit<McpCredential, "secretHash">;
+
+export type McpConnectionAttemptStatus = "success" | "error";
+
+/**
+ * Latest-attempt state per project, kept separate from `McpCredential` so a
+ * revoked/regenerated credential doesn't erase the audit trail of what the
+ * last connection attempt looked like (used to render the "error" state
+ * with a recovery path even after the offending credential is gone).
+ */
+export type McpConnectionState = {
+  projectId: string;
+  lastAttemptAt?: string;
+  lastAttemptStatus?: McpConnectionAttemptStatus;
+  lastAttemptCredentialId?: string;
+  lastAttemptTool?: string;
+  lastAttemptError?: string;
+  lastSuccessAt?: string;
+  lastSuccessCredentialId?: string;
+};
