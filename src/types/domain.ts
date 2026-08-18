@@ -160,6 +160,13 @@ export type TestRun = {
   assigneeName?: string;
   notes?: string;
   /**
+   * `manual` steps through the focused runner (Phase 6); `claudeAssisted`
+   * (Phase 8) submits results over MCP instead — the run detail page shows
+   * a prompt composer and live activity in place of the runner link, and
+   * flagged results go through human review rather than direct entry.
+   */
+  executionMode: "manual" | "claudeAssisted";
+  /**
    * Ordered — the sequence the focused runner (Phase 6) steps through.
    * References `TestCase.id`. A `TestResult` exists for every entry from the
    * moment the run is created (`notRun`), so progress is never inferred from
@@ -200,10 +207,29 @@ export type TestResult = {
   status: ResultStatus;
   actualResult?: string;
   evidence: readonly TestEvidence[];
+  /** Who most recently set the current status/notes — the human runner, Claude, or the `system` not-yet-run placeholder. */
   recordedBySource: ActorType;
   recordedByName?: string;
   recordedAt: string;
   updatedAt: string;
+  /**
+   * Set by Claude on submission when it isn't confident the result is
+   * correct (Phase 8 Build: "Source labels and human-review flags"). Cleared
+   * by an Approve or Correct action — never by another Claude submission, so
+   * a flagged result always waits for a human.
+   */
+  needsHumanReview?: boolean;
+  /** Set only by an Approve action, which leaves the content untouched — a Correct instead overwrites `recordedBy*` directly, since the human is now the content's author. */
+  reviewedBySource?: ActorType;
+  reviewedByName?: string;
+  reviewedAt?: string;
+  /**
+   * Caller-supplied key from the MCP `submit_test_result` call, if any — a
+   * retried call with the same key replays the already-recorded result
+   * instead of reprocessing it (04-CONFIG-BLUEPRINT.md, "Use idempotency
+   * keys for MCP writes and retried mutations").
+   */
+  idempotencyKey?: string;
 };
 
 export type Issue = {

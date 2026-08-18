@@ -6,13 +6,17 @@ import { AgentActivityStream } from "@/components/shared/agent-activity-stream";
 import { EntityLink } from "@/components/shared/entity-link";
 import { SourceBadge } from "@/components/shared/source-badge";
 import { StatusBadge } from "@/components/shared/status-badge";
+import { Badge } from "@/components/ui/badge";
 import { Icon } from "@/components/ui/icon";
 import { resultStatuses, testRunStatuses } from "@/config/status.config";
 import { EvidenceGallery } from "@/components/shared/evidence-gallery";
 import { CreateIssueTrigger } from "@/features/issues/components/create-issue-trigger";
+import { ClaudeAssistedExecutionPanel } from "@/features/test-runs/components/claude-assisted-execution-panel";
+import { ResultReviewControls } from "@/features/test-runs/components/result-review-controls";
 import { RunLifecycleActions } from "@/features/test-runs/components/run-lifecycle-actions";
 import { RunProgressBar } from "@/features/test-runs/components/run-progress-bar";
 import { formatDateTime } from "@/lib/format/date";
+import type { ExecutionContext } from "@/prompts/execution/prompt";
 import { getCurrentUser } from "@/server/services/auth-service";
 import { getProjectForOwner } from "@/server/services/project-service";
 import { listFeaturesForProject } from "@/server/services/feature-service";
@@ -51,6 +55,35 @@ export default async function TestRunDetailPage({
   const statusDef = testRunStatuses[testRun.status];
   const issueByOriginResultId = new Map(listIssuesForProject(project).map((issue) => [issue.originResultId, issue.publicId]));
 
+  const needsReviewCount = items.filter((item) => item.result.needsHumanReview).length;
+  const isClaudeAssistedInProgress =
+    testRun.executionMode === "claudeAssisted" && testRun.status !== "completed" && testRun.status !== "needsAttention";
+
+  const executionContext: ExecutionContext = {
+    project: {
+      name: project.name,
+      description: project.description,
+      appUrl: project.appUrl,
+      environment: project.environment,
+      repository: project.repository,
+    },
+    testRun: {
+      publicId: testRun.publicId,
+      name: testRun.name,
+      build: testRun.build,
+      environment: testRun.environment,
+      browser: testRun.browser,
+    },
+    testCases: items.map(({ testCase }) => ({
+      publicId: testCase.publicId,
+      title: testCase.title,
+      preconditions: testCase.preconditions,
+      steps: testCase.steps,
+      expectedResult: testCase.expectedResult,
+      roles: testCase.roles,
+    })),
+  };
+
   return (
     <div className="flex max-w-5xl flex-col gap-8">
       <div className="flex flex-col gap-1">
@@ -69,6 +102,16 @@ export default async function TestRunDetailPage({
             <span className="text-mono-sm font-semibold text-foreground-muted">{testRun.publicId}</span>
             <h1 className="text-title-lg font-serif text-foreground">{testRun.name}</h1>
             <StatusBadge status={statusDef} />
+            {testRun.executionMode === "claudeAssisted" ? (
+              <Badge tone="ai" icon="claude">
+                Claude-assisted
+              </Badge>
+            ) : null}
+            {needsReviewCount > 0 ? (
+              <Badge tone="partial" icon="alert">
+                {needsReviewCount} need{needsReviewCount === 1 ? "s" : ""} review
+              </Badge>
+            ) : null}
           </div>
           <RunLifecycleActions projectSlug={project.slug} testRun={testRun} context="detail" size="md" />
         </div>
@@ -91,15 +134,25 @@ export default async function TestRunDetailPage({
 
         {testRun.notes ? <p className="max-w-2xl text-body text-foreground-secondary">{testRun.notes}</p> : null}
 
-        <RunProgressBar progress={progress} />
+        {!isClaudeAssistedInProgress ? <RunProgressBar progress={progress} /> : null}
 
-        {testRun.status !== "planned" && nextIncompleteTestCasePublicId ? (
+        {!isClaudeAssistedInProgress && testRun.status !== "planned" && nextIncompleteTestCasePublicId ? (
           <div className="flex items-center gap-2 rounded-md border border-progress/30 bg-progress/10 px-3 py-2 text-body-sm text-foreground">
             <Icon name="inProgress" size={15} className="shrink-0 text-progress" />
             <span>Next up: {nextIncompleteTestCasePublicId}</span>
           </div>
         ) : null}
       </div>
+
+      {isClaudeAssistedInProgress ? (
+        <ClaudeAssistedExecutionPanel
+          projectSlug={project.slug}
+          runPublicId={testRun.publicId}
+          progress={progress}
+          needsReviewCount={needsReviewCount}
+          context={executionContext}
+        />
+      ) : null}
 
       <div className="grid grid-cols-1 gap-8 lg:grid-cols-3">
         <div className="flex flex-col gap-4 lg:col-span-2">
@@ -113,8 +166,16 @@ export default async function TestRunDetailPage({
               const feature = features.find((f) => f.id === testCase.featureId);
               const resultDef = resultStatuses[result.status];
 
+              const flaggedForReview = Boolean(result.needsHumanReview) && result.recordedBySource === "claude";
+
               return (
-                <div key={testCase.id} className="flex flex-col gap-3 rounded-lg border border-subtle bg-surface p-5">
+                <div
+                  key={testCase.id}
+                  className={
+                    "flex flex-col gap-3 rounded-lg border bg-surface p-5" +
+                    (flaggedForReview ? " border-partial/50" : " border-subtle")
+                  }
+                >
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div className="flex flex-col gap-1.5 min-w-0">
                       <div className="flex flex-wrap items-center gap-2">
@@ -148,19 +209,48 @@ export default async function TestRunDetailPage({
 
                   {result.evidence.length > 0 ? <EvidenceGallery evidence={result.evidence} /> : null}
 
+                  {flaggedForReview ? (
+                    <div className="flex items-center gap-2 rounded-md border border-partial/30 bg-partial/10 px-3 py-2">
+                      <Icon name="alert" size={14} className="shrink-0 text-partial" />
+                      <span className="text-body-sm text-foreground">Claude flagged this result for review.</span>
+                    </div>
+                  ) : null}
+
                   {result.status !== "notRun" ? (
-                    <div className="flex flex-wrap items-center justify-between gap-3">
-                      <p className="text-body-sm text-foreground-muted">
-                        Recorded by {result.recordedByName ?? "—"} · {formatDateTime(result.recordedAt)}
-                      </p>
-                      {result.status === "fail" || result.status === "partial" || result.status === "blocked" ? (
-                        <CreateIssueTrigger
+                    <div className="flex flex-col gap-2">
+                      <div className="flex flex-wrap items-center justify-between gap-3">
+                        <div className="flex flex-wrap items-center gap-2 text-body-sm text-foreground-muted">
+                          <SourceBadge source={result.recordedBySource} />
+                          <span>
+                            {result.recordedByName ? `Recorded by ${result.recordedByName}` : "Recorded"} ·{" "}
+                            {formatDateTime(result.recordedAt)}
+                          </span>
+                        </div>
+                        {result.status === "fail" || result.status === "partial" || result.status === "blocked" ? (
+                          <CreateIssueTrigger
+                            projectSlug={project.slug}
+                            testRunPublicId={testRun.publicId}
+                            testCasePublicId={testCase.publicId}
+                            defaultTitle={`${testCase.title} — failed in ${testRun.name}`}
+                            defaultSeverity={feature?.risk ?? "medium"}
+                            existingIssuePublicId={issueByOriginResultId.get(result.id)}
+                          />
+                        ) : null}
+                      </div>
+
+                      {result.reviewedByName && result.reviewedAt ? (
+                        <p className="text-body-sm text-foreground-muted">
+                          Reviewed by {result.reviewedByName} · {formatDateTime(result.reviewedAt)}
+                        </p>
+                      ) : null}
+
+                      {flaggedForReview ? (
+                        <ResultReviewControls
                           projectSlug={project.slug}
-                          testRunPublicId={testRun.publicId}
+                          runPublicId={testRun.publicId}
                           testCasePublicId={testCase.publicId}
-                          defaultTitle={`${testCase.title} — failed in ${testRun.name}`}
-                          defaultSeverity={feature?.risk ?? "medium"}
-                          existingIssuePublicId={issueByOriginResultId.get(result.id)}
+                          currentStatus={result.status}
+                          currentActualResult={result.actualResult}
                         />
                       ) : null}
                     </div>

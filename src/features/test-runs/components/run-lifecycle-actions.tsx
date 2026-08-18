@@ -20,10 +20,16 @@ export type RunLifecycleActionsProps = {
  * list row and the run detail header so the lifecycle only has one
  * implementation (03-CLAUDE-RULES.md, "No duplicated status maps in
  * multiple files" — the same discipline applied to the actions that follow
- * from a status).
+ * from a status). A `claudeAssisted` run has no manual runner to link to —
+ * `ClaudeAssistedExecutionPanel` drives it instead, so this renders nothing
+ * until the run reaches a terminal state.
  */
 export function RunLifecycleActions({ projectSlug, testRun, context, redirectTo, size = "sm" }: RunLifecycleActionsProps) {
   const runnerHref = `/projects/${projectSlug}/test-runs/${testRun.publicId}/run`;
+
+  if (testRun.executionMode === "claudeAssisted" && testRun.status !== "completed" && testRun.status !== "needsAttention") {
+    return null;
+  }
 
   if (testRun.status === "planned") {
     return (

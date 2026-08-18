@@ -12,10 +12,12 @@ import {
 import type { PublicUser } from "@/types/auth";
 
 import {
+  approveClaudeResult,
   createTestRun,
   getTestRunDetail,
   listTestRunsForProject,
   pauseTestRun,
+  rejectClaudeResult,
   startTestRun,
   submitTestResult,
   type CreateTestRunInput,
@@ -288,5 +290,194 @@ describe("test-run-service — lifecycle", () => {
     expect(pauseTestRun(projectB, run.data.testRun.publicId, owner.name).ok).toBe(false);
     expect(submitTestResult(projectB, run.data.testRun.publicId, caseOne.publicId, { status: "pass" }, owner.name).ok).toBe(false);
     expect(getTestRunDetail(projectB, run.data.testRun.publicId)).toBeNull();
+  });
+});
+
+describe("test-run-service — Claude-assisted execution (Phase 8)", () => {
+  it("defaults executionMode to manual, and honors claudeAssisted when requested", () => {
+    const { project, caseOne } = makeProjectWithReadyCases("Tau");
+    const manual = createTestRun(project, createRunInput({ testCaseIds: [caseOne.publicId] }), owner.name);
+    expect(manual.ok && manual.data.testRun.executionMode).toBe("manual");
+
+    const assisted = createTestRun(
+      project,
+      createRunInput({ name: "Assisted", testCaseIds: [caseOne.publicId], executionMode: "claudeAssisted" }),
+      owner.name,
+    );
+    expect(assisted.ok && assisted.data.testRun.executionMode).toBe("claudeAssisted");
+  });
+
+  it("is idempotent: a retried submit_test_result with the same key never reprocesses", () => {
+    const { project, caseOne } = makeProjectWithReadyCases("Upsilon");
+    const run = createTestRun(project, createRunInput({ testCaseIds: [caseOne.publicId] }), owner.name);
+    if (!run.ok) throw new Error("setup failed");
+
+    const first = submitTestResult(
+      run.data.project,
+      run.data.testRun.publicId,
+      caseOne.publicId,
+      { status: "pass", idempotencyKey: "claude-call-1" },
+      "Claude",
+      "claude",
+    );
+    const second = submitTestResult(
+      run.data.project,
+      run.data.testRun.publicId,
+      caseOne.publicId,
+      { status: "fail", actualResult: "different outcome", idempotencyKey: "claude-call-1" },
+      "Claude",
+      "claude",
+    );
+    expect(first.ok && second.ok).toBe(true);
+    if (!first.ok || !second.ok) return;
+    // The replay returns the original result unchanged, not the different second payload.
+    expect(second.data.result.status).toBe("pass");
+    expect(second.data.result.id).toBe(first.data.result.id);
+
+    const activity = listActivityForProject(project.id);
+    expect(activity.filter((event) => event.action.includes("recorded pass"))).toHaveLength(1);
+  });
+
+  it("a different idempotencyKey on the same case is treated as a genuine new submission", () => {
+    const { project, caseOne } = makeProjectWithReadyCases("Phi");
+    const run = createTestRun(project, createRunInput({ testCaseIds: [caseOne.publicId] }), owner.name);
+    if (!run.ok) throw new Error("setup failed");
+
+    submitTestResult(run.data.project, run.data.testRun.publicId, caseOne.publicId, { status: "pass", idempotencyKey: "a" }, "Claude", "claude");
+    const second = submitTestResult(
+      run.data.project,
+      run.data.testRun.publicId,
+      caseOne.publicId,
+      { status: "fail", actualResult: "now it fails", idempotencyKey: "b" },
+      "Claude",
+      "claude",
+    );
+    expect(second.ok).toBe(true);
+    if (!second.ok) return;
+    expect(second.data.result.status).toBe("fail");
+  });
+
+  it("records needsHumanReview only for a Claude submission that sets it — a human submission always clears it", () => {
+    const { project, caseOne, caseTwo } = makeProjectWithReadyCases("Chi");
+    const run = createTestRun(project, createRunInput({ testCaseIds: [caseOne.publicId, caseTwo.publicId] }), owner.name);
+    if (!run.ok) throw new Error("setup failed");
+
+    const flagged = submitTestResult(
+      run.data.project,
+      run.data.testRun.publicId,
+      caseOne.publicId,
+      { status: "partial", actualResult: "Ambiguous.", needsHumanReview: true },
+      "Claude",
+      "claude",
+    );
+    expect(flagged.ok && flagged.data.result.needsHumanReview).toBe(true);
+
+    const humanResult = submitTestResult(
+      run.data.project,
+      run.data.testRun.publicId,
+      caseTwo.publicId,
+      // A human submission ignores needsHumanReview even if somehow passed.
+      { status: "pass" },
+      owner.name,
+    );
+    expect(humanResult.ok && humanResult.data.result.needsHumanReview).toBe(false);
+  });
+
+  it("Correct (a human re-submission) clears a pending review flag", () => {
+    const { project, caseOne } = makeProjectWithReadyCases("Psi");
+    const run = createTestRun(project, createRunInput({ testCaseIds: [caseOne.publicId] }), owner.name);
+    if (!run.ok) throw new Error("setup failed");
+    submitTestResult(
+      run.data.project,
+      run.data.testRun.publicId,
+      caseOne.publicId,
+      { status: "partial", actualResult: "Unsure.", needsHumanReview: true },
+      "Claude",
+      "claude",
+    );
+
+    const corrected = submitTestResult(
+      run.data.project,
+      run.data.testRun.publicId,
+      caseOne.publicId,
+      { status: "pass" },
+      owner.name,
+    );
+    expect(corrected.ok).toBe(true);
+    if (!corrected.ok) return;
+    expect(corrected.data.result.needsHumanReview).toBe(false);
+    expect(corrected.data.result.recordedBySource).toBe("human");
+  });
+
+  it("Approve clears the flag and stamps a reviewer without touching the recorded content", () => {
+    const { project, caseOne } = makeProjectWithReadyCases("Omega");
+    const run = createTestRun(project, createRunInput({ testCaseIds: [caseOne.publicId] }), owner.name);
+    if (!run.ok) throw new Error("setup failed");
+    submitTestResult(
+      run.data.project,
+      run.data.testRun.publicId,
+      caseOne.publicId,
+      { status: "pass", needsHumanReview: true },
+      "Claude",
+      "claude",
+    );
+
+    const approved = approveClaudeResult(run.data.project, run.data.testRun.publicId, caseOne.publicId, owner.name);
+    expect(approved.ok).toBe(true);
+    if (!approved.ok) return;
+    expect(approved.data.result.needsHumanReview).toBe(false);
+    expect(approved.data.result.recordedBySource).toBe("claude"); // still Claude's content — only reviewed, not rewritten
+    expect(approved.data.result.reviewedByName).toBe(owner.name);
+  });
+
+  it("refuses to approve a result that isn't from Claude", () => {
+    const { project, caseOne } = makeProjectWithReadyCases("Alpha2");
+    const run = createTestRun(project, createRunInput({ testCaseIds: [caseOne.publicId] }), owner.name);
+    if (!run.ok) throw new Error("setup failed");
+    submitTestResult(run.data.project, run.data.testRun.publicId, caseOne.publicId, { status: "pass" }, owner.name);
+
+    const result = approveClaudeResult(run.data.project, run.data.testRun.publicId, caseOne.publicId, owner.name);
+    expect(result.ok).toBe(false);
+  });
+
+  it("Reject reverts the result to notRun and reopens a completed run", () => {
+    const { project, caseOne } = makeProjectWithReadyCases("Beta2");
+    const run = createTestRun(project, createRunInput({ testCaseIds: [caseOne.publicId] }), owner.name);
+    if (!run.ok) throw new Error("setup failed");
+    const submitted = submitTestResult(
+      run.data.project,
+      run.data.testRun.publicId,
+      caseOne.publicId,
+      { status: "pass", needsHumanReview: true },
+      "Claude",
+      "claude",
+    );
+    expect(submitted.ok && submitted.data.testRun.status).toBe("completed");
+
+    const rejected = rejectClaudeResult(run.data.project, run.data.testRun.publicId, caseOne.publicId, owner.name);
+    expect(rejected.ok).toBe(true);
+    if (!rejected.ok) return;
+    expect(rejected.data.result.status).toBe("notRun");
+    expect(rejected.data.result.needsHumanReview).toBe(false);
+    expect(rejected.data.testRun.status).toBe("inProgress");
+    expect(rejected.data.testRun.completedAt).toBeUndefined();
+  });
+
+  it("never reviews a result across projects", () => {
+    const { project: projectA, caseOne } = makeProjectWithReadyCases("Gamma2");
+    const projectB = makeProject("Delta2");
+    const run = createTestRun(projectA, createRunInput({ testCaseIds: [caseOne.publicId] }), owner.name);
+    if (!run.ok) throw new Error("setup failed");
+    submitTestResult(
+      run.data.project,
+      run.data.testRun.publicId,
+      caseOne.publicId,
+      { status: "pass", needsHumanReview: true },
+      "Claude",
+      "claude",
+    );
+
+    expect(approveClaudeResult(projectB, run.data.testRun.publicId, caseOne.publicId, owner.name).ok).toBe(false);
+    expect(rejectClaudeResult(projectB, run.data.testRun.publicId, caseOne.publicId, owner.name).ok).toBe(false);
   });
 });

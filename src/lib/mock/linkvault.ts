@@ -454,6 +454,7 @@ const releaseCandidate1: TestRun = {
   environment: "Staging",
   browser: "Chrome 128",
   assigneeName: "Priya Nair",
+  executionMode: "manual",
   selectedTestCaseIds: [authSignUpCase.id, privateVaultCase.id],
   createdBySource: "human",
   createdByName: "Priya Nair",
@@ -473,6 +474,7 @@ const focusedRerun: TestRun = {
   environment: "Staging",
   browser: "Chrome 128",
   assigneeName: "Priya Nair",
+  executionMode: "manual",
   selectedTestCaseIds: [privateVaultCase.id],
   createdBySource: "human",
   createdByName: "Priya Nair",
@@ -492,6 +494,7 @@ const plannedRegressionRun: TestRun = {
   environment: "Staging",
   browser: "Firefox 129",
   assigneeName: "Priya Nair",
+  executionMode: "manual",
   selectedTestCaseIds: [authSignUpCase.id, authInvalidLoginCase.id],
   createdBySource: "human",
   createdByName: "Priya Nair",
@@ -510,6 +513,7 @@ const pausedNightlyRun: TestRun = {
   browser: "Chrome 128",
   assigneeName: "Priya Nair",
   notes: "Spot-checking auth flows ahead of the next candidate build.",
+  executionMode: "manual",
   selectedTestCaseIds: [authSignUpCase.id, authInvalidLoginCase.id],
   createdBySource: "human",
   createdByName: "Priya Nair",
@@ -602,6 +606,79 @@ const pausedResultAuth02NotRun: TestResult = {
   recordedBySource: "system",
   recordedAt: pausedNightlyRun.createdAt,
   updatedAt: pausedNightlyRun.createdAt,
+};
+
+/**
+ * Phase 8's Claude-assisted run — a mixed AI/human story on its own
+ * (Phase 8 acceptance: "Demonstrate a mixed AI/human run with at least one
+ * review-required result"). Claude submitted all three results over MCP;
+ * two are confident (a pass and a fail), one is flagged and still sitting
+ * in the human-review queue, unresolved, so the Approve/Correct/Reject
+ * controls are reachable without the reviewer needing to run anything first.
+ */
+const claudeAssistedRun: TestRun = {
+  id: "run-claude-assisted-search",
+  publicId: formatPublicId("RUN", 27),
+  projectId: project.id,
+  name: "Claude-assisted Regression — Search & Auth",
+  status: "needsAttention",
+  build: "1.4.0-rc.2",
+  environment: "Staging",
+  browser: "Chrome 128",
+  executionMode: "claudeAssisted",
+  selectedTestCaseIds: [searchTypeaheadCase.id, authInvalidLoginCase.id, searchTypeaheadDuplicateCase.id],
+  createdBySource: "human",
+  createdByName: "Priya Nair",
+  createdAt: "2026-08-17T10:00:00.000Z",
+  updatedAt: "2026-08-17T10:06:00.000Z",
+  startedAt: "2026-08-17T10:01:00.000Z",
+  completedAt: "2026-08-17T10:06:00.000Z",
+};
+
+const claudeResultSearchPass: TestResult = {
+  id: "result-se01-pass-claude",
+  testRunId: claudeAssistedRun.id,
+  testCaseId: searchTypeaheadCase.id,
+  status: "pass",
+  actualResult: "Typing \"lin\" surfaced matching links within the expected delay.",
+  evidence: [],
+  needsHumanReview: false,
+  recordedBySource: "claude",
+  recordedByName: "Claude",
+  recordedAt: "2026-08-17T10:02:00.000Z",
+  updatedAt: "2026-08-17T10:02:00.000Z",
+  idempotencyKey: "run-27-se-01",
+};
+
+const claudeResultAuthFail: TestResult = {
+  id: "result-auth02-fail-claude",
+  testRunId: claudeAssistedRun.id,
+  testCaseId: authInvalidLoginCase.id,
+  status: "fail",
+  actualResult: "The error message read \"no account found with that email\" instead of the required generic message.",
+  evidence: [],
+  needsHumanReview: false,
+  recordedBySource: "claude",
+  recordedByName: "Claude",
+  recordedAt: "2026-08-17T10:04:00.000Z",
+  updatedAt: "2026-08-17T10:04:00.000Z",
+  idempotencyKey: "run-27-auth-02",
+};
+
+const claudeResultSearchDuplicateNeedsReview: TestResult = {
+  id: "result-se02-partial-claude",
+  testRunId: claudeAssistedRun.id,
+  testCaseId: searchTypeaheadDuplicateCase.id,
+  status: "partial",
+  actualResult:
+    "Results updated while typing, but ranking looked inconsistent between two runs of the same query — could not confirm whether that's expected.",
+  evidence: [],
+  needsHumanReview: true,
+  recordedBySource: "claude",
+  recordedByName: "Claude",
+  recordedAt: "2026-08-17T10:06:00.000Z",
+  updatedAt: "2026-08-17T10:06:00.000Z",
+  idempotencyKey: "run-27-se-02",
 };
 
 const privateVaultIssue: Issue = {
@@ -996,6 +1073,83 @@ const activity: ActivityEvent[] = [
     entityId: pausedNightlyRun.id,
     createdAt: pausedNightlyRun.updatedAt,
   },
+  {
+    id: "activity-claude-run-created",
+    projectId: project.id,
+    actorType: "human",
+    actorName: "Priya Nair",
+    action: `created ${claudeAssistedRun.publicId} — ${claudeAssistedRun.name} with 3 test cases selected`,
+    entityType: "testRun",
+    entityId: claudeAssistedRun.id,
+    relatedEntities: [
+      { type: "testCase", id: searchTypeaheadCase.id },
+      { type: "testCase", id: authInvalidLoginCase.id },
+      { type: "testCase", id: searchTypeaheadDuplicateCase.id },
+    ],
+    createdAt: claudeAssistedRun.createdAt,
+  },
+  {
+    id: "activity-claude-run-started",
+    projectId: project.id,
+    actorType: "claude",
+    actorName: "Claude",
+    action: `started ${claudeAssistedRun.publicId}`,
+    entityType: "testRun",
+    entityId: claudeAssistedRun.id,
+    createdAt: claudeAssistedRun.startedAt!,
+  },
+  {
+    id: "activity-claude-se01",
+    projectId: project.id,
+    actorType: "claude",
+    actorName: "Claude",
+    action: `recorded pass for ${searchTypeaheadCase.publicId} in ${claudeAssistedRun.publicId}`,
+    entityType: "testResult",
+    entityId: claudeResultSearchPass.id,
+    relatedEntities: [
+      { type: "testCase", id: searchTypeaheadCase.id },
+      { type: "testRun", id: claudeAssistedRun.id },
+    ],
+    createdAt: claudeResultSearchPass.recordedAt,
+  },
+  {
+    id: "activity-claude-auth02",
+    projectId: project.id,
+    actorType: "claude",
+    actorName: "Claude",
+    action: `recorded fail for ${authInvalidLoginCase.publicId} in ${claudeAssistedRun.publicId}`,
+    entityType: "testResult",
+    entityId: claudeResultAuthFail.id,
+    relatedEntities: [
+      { type: "testCase", id: authInvalidLoginCase.id },
+      { type: "testRun", id: claudeAssistedRun.id },
+    ],
+    createdAt: claudeResultAuthFail.recordedAt,
+  },
+  {
+    id: "activity-claude-se02",
+    projectId: project.id,
+    actorType: "claude",
+    actorName: "Claude",
+    action: `recorded partial for ${searchTypeaheadDuplicateCase.publicId} in ${claudeAssistedRun.publicId} — flagged for human review`,
+    entityType: "testResult",
+    entityId: claudeResultSearchDuplicateNeedsReview.id,
+    relatedEntities: [
+      { type: "testCase", id: searchTypeaheadDuplicateCase.id },
+      { type: "testRun", id: claudeAssistedRun.id },
+    ],
+    createdAt: claudeResultSearchDuplicateNeedsReview.recordedAt,
+  },
+  {
+    id: "activity-claude-run-completed-pass",
+    projectId: project.id,
+    actorType: "claude",
+    actorName: "Claude",
+    action: `completed its assisted pass on ${claudeAssistedRun.publicId} — 2 of 3 passed cleanly; 1 needs review on search ranking consistency`,
+    entityType: "testRun",
+    entityId: claudeAssistedRun.id,
+    createdAt: claudeAssistedRun.updatedAt,
+  },
 ];
 
 export const linkVaultSeed = {
@@ -1008,7 +1162,7 @@ export const linkVaultSeed = {
     searchTypeaheadCase,
     searchTypeaheadDuplicateCase,
   ],
-  testRuns: [releaseCandidate1, focusedRerun, plannedRegressionRun, pausedNightlyRun],
+  testRuns: [releaseCandidate1, focusedRerun, plannedRegressionRun, pausedNightlyRun, claudeAssistedRun],
   testResults: [
     authOnePassInRC1,
     failingResult,
@@ -1017,6 +1171,9 @@ export const linkVaultSeed = {
     plannedResultAuth02,
     pausedResultAuth01Pass,
     pausedResultAuth02NotRun,
+    claudeResultSearchPass,
+    claudeResultAuthFail,
+    claudeResultSearchDuplicateNeedsReview,
   ],
   issues: [privateVaultIssue],
   activity,

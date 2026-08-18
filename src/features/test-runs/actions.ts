@@ -4,17 +4,21 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
 import { parseCommaIds, submitTestResultSchema, testRunCreateFormSchema } from "@/features/test-runs/schemas";
-import { fieldErrorsFromZod, formErrorState, type ActionState } from "@/lib/forms/action-state";
+import { fieldErrorsFromZod, formErrorState, successState, type ActionState } from "@/lib/forms/action-state";
 import { getCurrentUser } from "@/server/services/auth-service";
 import { applyRerunResultToIssuesForCase } from "@/server/services/issue-service";
 import { getProjectForOwner } from "@/server/services/project-service";
 import {
+  approveClaudeResult,
   createTestRun,
+  getTestRunActivitySince,
   getTestRunDetail,
   pauseTestRun,
+  rejectClaudeResult,
   startTestRun,
   submitTestResult,
   type RunProgress,
+  type TestRunActivitySince,
 } from "@/server/services/test-run-service";
 import type { TestEvidence, TestRun } from "@/types/domain";
 
@@ -36,6 +40,7 @@ export type CreateTestRunValues = {
   assigneeName: string;
   notes: string;
   testCaseIds: string;
+  executionMode: string;
 };
 
 export async function createTestRunAction(
@@ -51,6 +56,7 @@ export async function createTestRunAction(
     assigneeName: String(formData.get("assigneeName") ?? ""),
     notes: String(formData.get("notes") ?? ""),
     testCaseIds: String(formData.get("testCaseIds") ?? ""),
+    executionMode: String(formData.get("executionMode") ?? "manual"),
   };
 
   const user = await getCurrentUser();
@@ -71,6 +77,7 @@ export async function createTestRunAction(
       assigneeName: parsed.data.assigneeName,
       notes: parsed.data.notes,
       testCaseIds: parseCommaIds(parsed.data.testCaseIds),
+      executionMode: parsed.data.executionMode,
     },
     user.name,
   );
@@ -160,4 +167,86 @@ export async function submitTestResultAction(
     progress: detail?.progress ?? { total: 0, notRun: 0, pass: 0, fail: 0, partial: 0, blocked: 0 },
     issueUpdate: updatedIssue ? { publicId: updatedIssue.publicId, status: updatedIssue.status } : null,
   };
+}
+
+// ---- Human review of a Claude-submitted result (Phase 8) ----
+
+export async function approveClaudeResultAction(formData: FormData): Promise<void> {
+  const projectSlug = String(formData.get("projectSlug") ?? "");
+  const runId = String(formData.get("runId") ?? "");
+  const testCaseId = String(formData.get("testCaseId") ?? "");
+  const { user, project } = await requireProject(projectSlug);
+
+  approveClaudeResult(project, runId, testCaseId, user.name);
+  redirect(`/projects/${projectSlug}/test-runs/${runId}`);
+}
+
+export async function rejectClaudeResultAction(formData: FormData): Promise<void> {
+  const projectSlug = String(formData.get("projectSlug") ?? "");
+  const runId = String(formData.get("runId") ?? "");
+  const testCaseId = String(formData.get("testCaseId") ?? "");
+  const { user, project } = await requireProject(projectSlug);
+
+  rejectClaudeResult(project, runId, testCaseId, user.name);
+  redirect(`/projects/${projectSlug}/test-runs/${runId}`);
+}
+
+export type CorrectTestResultValues = { status: string; actualResult: string };
+
+/**
+ * A human's Correct action — deliberately just `submitTestResult` again with
+ * `actorType: "human"` (the default): the human becomes the result's current
+ * author, the same as any other re-submission. See `submitTestResult`'s doc
+ * comment.
+ */
+export async function correctTestResultAction(
+  _prevState: ActionState<CorrectTestResultValues>,
+  formData: FormData,
+): Promise<ActionState<CorrectTestResultValues>> {
+  const projectSlug = String(formData.get("projectSlug") ?? "");
+  const runId = String(formData.get("runId") ?? "");
+  const testCaseId = String(formData.get("testCaseId") ?? "");
+  const values: CorrectTestResultValues = {
+    status: String(formData.get("status") ?? ""),
+    actualResult: String(formData.get("actualResult") ?? ""),
+  };
+
+  const user = await getCurrentUser();
+  if (!user) return formErrorState("Your session expired. Sign in again.", values);
+  const project = getProjectForOwner(projectSlug, user);
+  if (!project) return formErrorState("Project could not be found.", values);
+
+  const parsed = submitTestResultSchema.safeParse({ status: values.status, actualResult: values.actualResult, evidence: [] });
+  if (!parsed.success) return fieldErrorsFromZod(parsed.error, values);
+
+  const result = submitTestResult(
+    project,
+    runId,
+    testCaseId,
+    { status: parsed.data.status, actualResult: parsed.data.actualResult },
+    user.name,
+  );
+  if (!result.ok) return formErrorState(result.error, values);
+
+  const updatedIssue = applyRerunResultToIssuesForCase(project, result.data.testRun, testCaseId, result.data.result);
+  if (updatedIssue) revalidatePath(`/projects/${projectSlug}/issues/${updatedIssue.publicId}`);
+  revalidatePath(`/projects/${projectSlug}/test-runs/${runId}`);
+
+  return successState(values);
+}
+
+/**
+ * Read-only poll backing the Claude-assisted execution panel's "waiting for
+ * Claude" states — mirrors `pollFeatureDiscoveryActivityAction`.
+ */
+export async function pollTestRunActivityAction(
+  projectSlug: string,
+  runPublicId: string,
+  sinceIso: string,
+): Promise<TestRunActivitySince | null> {
+  const user = await getCurrentUser();
+  if (!user) return null;
+  const project = getProjectForOwner(projectSlug, user);
+  if (!project) return null;
+  return getTestRunActivitySince(project, runPublicId, sinceIso);
 }

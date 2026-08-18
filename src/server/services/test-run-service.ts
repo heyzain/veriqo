@@ -133,6 +133,8 @@ export type CreateTestRunInput = {
   testCaseIds: string[];
   /** `RERUN` for a focused rerun created from an issue (`issue-service.createFocusedRerun`); defaults to `RUN`. */
   publicIdPrefix?: TestRunPublicIdPrefix;
+  /** Defaults to `manual` (Phase 6/7's runner). `claudeAssisted` (Phase 8) submits results over MCP instead. */
+  executionMode?: "manual" | "claudeAssisted";
 };
 
 export function createTestRun(
@@ -164,6 +166,7 @@ export function createTestRun(
     browser: input.browser.trim(),
     assigneeName: input.assigneeName?.trim() || undefined,
     notes: input.notes?.trim() || undefined,
+    executionMode: input.executionMode ?? "manual",
     selectedTestCaseIds: resolvedCases.map((tc) => tc.id),
     createdBySource: "human",
     createdByName: actorName,
@@ -210,6 +213,7 @@ export function startTestRun(
   project: Project,
   publicId: string,
   actorName: string,
+  actorType: ActivityEvent["actorType"] = "human",
 ): TestRunServiceResult<{ testRun: TestRun }> {
   const existing = findTestRunByPublicId(project.id, publicId);
   if (!existing) return fail("Test run not found.");
@@ -230,7 +234,7 @@ export function startTestRun(
 
   activity(
     project.id,
-    "human",
+    actorType,
     actorName,
     wasPaused ? `resumed ${updated.publicId}` : `started ${updated.publicId}`,
     "testRun",
@@ -265,16 +269,27 @@ export type SubmitTestResultInput = {
   status: Exclude<ResultStatus, "notRun">;
   actualResult?: string;
   evidence?: TestEvidence[];
+  /** Claude sets this when it isn't confident in the result (Phase 8) — ignored (forced to `false`) for a human submission, since a human's own entry never needs reviewing itself. */
+  needsHumanReview?: boolean;
+  /** MCP-only — see `TestResult.idempotencyKey`. */
+  idempotencyKey?: string;
 };
 
 /**
  * Records one case's result within a run. Starts a `planned` run and resumes
- * a `paused` one — recording a result is the human actively working it.
+ * a `paused` one — recording a result is the actor actively working it.
  * Once every selected case has a result, the run auto-completes: `completed`
  * if every result passed, `needsAttention` if any failed (Phase 6
  * acceptance: "Run detail connects results to cases/features" via a
  * status that reflects the outcome, not just "done"). Editing a result after
  * completion clears `completedAt` until every case has one again.
+ *
+ * Used for both the manual runner (`actorType: "human"`, the default) and
+ * the `submit_test_result` MCP tool (`actorType: "claude"`) — and, via the
+ * default, for a human's Correct action on a Claude result, which is
+ * intentionally just this same call: the human becomes the result's current
+ * author, same as any other re-submission (Phase 8, "Human review of
+ * uncertain results").
  */
 export function submitTestResult(
   project: Project,
@@ -282,6 +297,7 @@ export function submitTestResult(
   testCasePublicId: string,
   input: SubmitTestResultInput,
   actorName: string,
+  actorType: ActivityEvent["actorType"] = "human",
 ): TestRunServiceResult<{ testRun: TestRun; result: TestResult }> {
   const testRun = findTestRunByPublicId(project.id, runPublicId);
   if (!testRun) return fail("Test run not found.");
@@ -299,13 +315,27 @@ export function submitTestResult(
   const existingResult = findTestResult(testRun.id, testCase.id);
   if (!existingResult) return fail("Result record missing for this test case — the run may be corrupted.");
 
+  // Idempotent replay (04-CONFIG-BLUEPRINT.md, "Use idempotency keys for MCP
+  // writes and retried mutations"): a retried `submit_test_result` call with
+  // the same key returns the already-recorded result instead of reprocessing
+  // it — so a network retry can never double-log activity or double-apply
+  // the issue verify/reopen rule.
+  if (input.idempotencyKey && existingResult.idempotencyKey === input.idempotencyKey) {
+    return ok({ testRun, result: existingResult });
+  }
+
   const now = new Date().toISOString();
   const updatedResult: TestResult = {
     ...existingResult,
     status: input.status,
     actualResult: input.actualResult?.trim() || undefined,
     evidence: input.evidence ?? existingResult.evidence,
-    recordedBySource: "human",
+    needsHumanReview: actorType === "claude" ? Boolean(input.needsHumanReview) : false,
+    reviewedBySource: undefined,
+    reviewedByName: undefined,
+    reviewedAt: undefined,
+    idempotencyKey: input.idempotencyKey,
+    recordedBySource: actorType,
     recordedByName: actorName,
     recordedAt: now,
     updatedAt: now,
@@ -333,9 +363,10 @@ export function submitTestResult(
 
   activity(
     project.id,
-    "human",
+    actorType,
     actorName,
-    `recorded ${resultStatuses[input.status].label.toLowerCase()} for ${testCase.publicId} in ${testRun.publicId}`,
+    `recorded ${resultStatuses[input.status].label.toLowerCase()} for ${testCase.publicId} in ${testRun.publicId}` +
+      (updatedResult.needsHumanReview ? " — flagged for human review" : ""),
     "testResult",
     updatedResult.id,
     {
@@ -362,6 +393,142 @@ export function submitTestResult(
   return ok({ testRun: updatedRun, result: updatedResult });
 }
 
+// ---- Human review of a Claude-submitted result ----
+
+/**
+ * Accepts a Claude-flagged result as-is — leaves `recordedBy*` untouched
+ * (Claude is still the content's author) and stamps `reviewedBy*` alongside
+ * it, so the UI can show both "Recorded by Claude" and "Reviewed by
+ * {human}" (Phase 8 acceptance: "Human review is clearly distinct from AI
+ * submission").
+ */
+export function approveClaudeResult(
+  project: Project,
+  runPublicId: string,
+  testCasePublicId: string,
+  actorName: string,
+): TestRunServiceResult<{ result: TestResult }> {
+  const testRun = findTestRunByPublicId(project.id, runPublicId);
+  if (!testRun) return fail("Test run not found.");
+  const testCase = findTestCaseByPublicId(project.id, testCasePublicId);
+  if (!testCase) return fail("Test case not found.");
+  const existing = findTestResult(testRun.id, testCase.id);
+  if (!existing) return fail("Result not found.");
+  if (existing.recordedBySource !== "claude") return fail("Only a Claude-submitted result can be approved.");
+  if (!existing.needsHumanReview) return ok({ result: existing });
+
+  const now = new Date().toISOString();
+  const updated: TestResult = {
+    ...existing,
+    needsHumanReview: false,
+    reviewedBySource: "human",
+    reviewedByName: actorName,
+    reviewedAt: now,
+    updatedAt: now,
+  };
+  saveTestResult(updated);
+
+  activity(
+    project.id,
+    "human",
+    actorName,
+    `approved Claude's result for ${testCase.publicId} in ${testRun.publicId}`,
+    "testResult",
+    updated.id,
+    { relatedEntities: [{ type: "testCase", id: testCase.id }, { type: "testRun", id: testRun.id }] },
+  );
+
+  return ok({ result: updated });
+}
+
+/**
+ * Discards a Claude-submitted result back to `notRun` — the case needs
+ * re-execution, by Claude or a human. The rejection itself is preserved in
+ * the activity ledger even though the live record reverts to the same
+ * neutral placeholder `createTestRun` seeds every case with.
+ */
+export function rejectClaudeResult(
+  project: Project,
+  runPublicId: string,
+  testCasePublicId: string,
+  actorName: string,
+): TestRunServiceResult<{ testRun: TestRun; result: TestResult }> {
+  const testRun = findTestRunByPublicId(project.id, runPublicId);
+  if (!testRun) return fail("Test run not found.");
+  const testCase = findTestCaseByPublicId(project.id, testCasePublicId);
+  if (!testCase) return fail("Test case not found.");
+  const existing = findTestResult(testRun.id, testCase.id);
+  if (!existing) return fail("Result not found.");
+  if (existing.recordedBySource !== "claude") return fail("Only a Claude-submitted result can be rejected.");
+
+  const now = new Date().toISOString();
+  const reverted: TestResult = {
+    ...existing,
+    status: "notRun",
+    actualResult: undefined,
+    evidence: [],
+    needsHumanReview: false,
+    reviewedBySource: undefined,
+    reviewedByName: undefined,
+    reviewedAt: undefined,
+    idempotencyKey: undefined,
+    recordedBySource: "system",
+    recordedByName: undefined,
+    recordedAt: now,
+    updatedAt: now,
+  };
+  saveTestResult(reverted);
+
+  // A case reverting to notRun means the run can no longer be "done".
+  let updatedRun = testRun;
+  if (testRun.status === "completed" || testRun.status === "needsAttention") {
+    updatedRun = { ...testRun, status: "inProgress", completedAt: undefined, updatedAt: now };
+    saveTestRun(updatedRun);
+  }
+
+  activity(
+    project.id,
+    "human",
+    actorName,
+    `rejected Claude's result for ${testCase.publicId} in ${testRun.publicId} — needs re-execution`,
+    "testResult",
+    reverted.id,
+    { relatedEntities: [{ type: "testCase", id: testCase.id }, { type: "testRun", id: testRun.id }] },
+  );
+
+  return ok({ testRun: updatedRun, result: reverted });
+}
+
+// ---- Claude signals it's done with its assisted pass ----
+
+export type CompleteTestRunSummary = { progress: RunProgress; needsReviewCount: number };
+
+export function completeTestRunFromClaude(
+  project: Project,
+  runPublicId: string,
+  summaryNote: string | undefined,
+  actorName: string,
+): TestRunServiceResult<CompleteTestRunSummary> {
+  const testRun = findTestRunByPublicId(project.id, runPublicId);
+  if (!testRun) return fail("Test run not found.");
+
+  const results = listTestResultsForRun(testRun.id);
+  const progress = computeRunProgress(results);
+  const needsReviewCount = results.filter((r) => r.needsHumanReview).length;
+
+  activity(
+    project.id,
+    "claude",
+    actorName,
+    summaryNote ? `completed its assisted pass on ${testRun.publicId} — ${summaryNote}` : `completed its assisted pass on ${testRun.publicId}`,
+    "testRun",
+    testRun.id,
+    { metadata: { progress, needsReviewCount } },
+  );
+
+  return ok({ progress, needsReviewCount });
+}
+
 // ---- Activity for the run detail page ----
 
 export function getTestRunActivity(project: Project, testRun: TestRun): ActivityEvent[] {
@@ -371,4 +538,24 @@ export function getTestRunActivity(project: Project, testRun: TestRun): Activity
       (event.entityId === testRun.id ||
         event.relatedEntities?.some((related) => related.type === "testRun" && related.id === testRun.id)),
   );
+}
+
+export type TestRunActivitySince = { events: ActivityEvent[] };
+
+/**
+ * Takes the run's public ID, not its internal `id` — mirrors
+ * `issue-service.getIssueActivitySince`. Backs the Claude-assisted
+ * execution panel's live poll (Phase 8).
+ */
+export function getTestRunActivitySince(project: Project, publicId: string, sinceIso: string): TestRunActivitySince {
+  const testRun = findTestRunByPublicId(project.id, publicId);
+  if (!testRun) return { events: [] };
+
+  const since = new Date(sinceIso).getTime();
+  const events = getTestRunActivity(project, testRun)
+    .filter((event) => new Date(event.createdAt).getTime() > since)
+    .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())
+    .slice(-30);
+
+  return { events };
 }

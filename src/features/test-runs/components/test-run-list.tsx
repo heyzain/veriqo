@@ -2,6 +2,7 @@ import Link from "next/link";
 
 import { SourceBadge } from "@/components/shared/source-badge";
 import { StatusBadge } from "@/components/shared/status-badge";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Icon } from "@/components/ui/icon";
@@ -68,6 +69,11 @@ export function TestRunList({ projectSlug, runs, hasActiveFilters }: TestRunList
                     {testRun.name}
                   </Link>
                   <StatusBadge status={statusDef} />
+                  {testRun.executionMode === "claudeAssisted" ? (
+                    <Badge tone="ai" icon="claude">
+                      Claude-assisted
+                    </Badge>
+                  ) : null}
                 </div>
 
                 <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-body-sm text-foreground-muted">
@@ -88,7 +94,18 @@ export function TestRunList({ projectSlug, runs, hasActiveFilters }: TestRunList
               </div>
 
               <div className="flex shrink-0 items-center gap-2 self-end sm:self-start">
-                <RunLifecycleActions projectSlug={projectSlug} testRun={testRun} context="list" />
+                {testRun.executionMode === "claudeAssisted" &&
+                testRun.status !== "completed" &&
+                testRun.status !== "needsAttention" ? (
+                  <Button asChild intent="secondary" size="sm">
+                    <Link href={`/projects/${projectSlug}/test-runs/${testRun.publicId}`}>
+                      <span>View</span>
+                      <Icon name="chevronRight" size={14} />
+                    </Link>
+                  </Button>
+                ) : (
+                  <RunLifecycleActions projectSlug={projectSlug} testRun={testRun} context="list" />
+                )}
               </div>
             </div>
 

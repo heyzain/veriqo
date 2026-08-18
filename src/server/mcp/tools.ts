@@ -15,24 +15,36 @@ import {
   mcpListTestCasesSchema,
   mcpUpdateTestCaseSchema,
 } from "@/features/test-cases/schemas";
+import {
+  mcpCompleteTestRunSchema,
+  mcpStartTestRunSchema,
+  mcpSubmitTestResultSchema,
+} from "@/features/test-runs/schemas";
 import { totalSetupSteps } from "@/config/setup-steps.config";
 import {
   createFeatureFromDiscovery,
   listFeaturesForMcp,
   updateFeatureFromDiscovery,
 } from "@/server/services/feature-service";
-import { recordIssueFix, updateIssueStatus } from "@/server/services/issue-service";
+import { applyRerunResultToIssuesForCase, recordIssueFix, updateIssueStatus } from "@/server/services/issue-service";
 import {
   createTestCaseFromGeneration,
   listTestCasesForMcp,
   updateTestCaseFromGeneration,
 } from "@/server/services/test-case-service";
 import {
+  completeTestRunFromClaude,
+  computeRunProgress,
+  startTestRun,
+  submitTestResult,
+} from "@/server/services/test-run-service";
+import {
   findFeatureById,
   findTestCaseById,
   listFeaturesForProject,
   listIssuesForProject,
   listTestCasesForProject,
+  listTestResultsForRun,
   listTestRunsForProject,
 } from "@/server/repositories/project-repository";
 import type { Feature, Issue, Project, TestCase } from "@/types/domain";
@@ -46,7 +58,11 @@ import type { Feature, Issue, Project, TestCase } from "@/types/domain";
  * least-privilege additions; `list_issues`/`update_issue_status`/
  * `record_issue_fix` are Phase 7's — deliberately narrow, since only a
  * human/system action ever marks an issue ready for retest, creates its
- * rerun, or verifies/reopens it (04-CONFIG-BLUEPRINT.md, "MCP rules").
+ * rerun, or verifies/reopens it; `start_test_run`/`submit_test_result`/
+ * `complete_test_run` are Phase 8's — Claude drives a `claudeAssisted` run's
+ * execution, but a result it flags `needsHumanReview` stays that way until a
+ * human approves, corrects, or rejects it (04-CONFIG-BLUEPRINT.md, "MCP
+ * rules").
  */
 export const mcpToolNames = [
   "health_check",
@@ -60,6 +76,9 @@ export const mcpToolNames = [
   "list_issues",
   "update_issue_status",
   "record_issue_fix",
+  "start_test_run",
+  "submit_test_result",
+  "complete_test_run",
 ] as const;
 export type McpToolName = (typeof mcpToolNames)[number];
 
@@ -260,6 +279,65 @@ function recordIssueFixTool(project: Project, input: unknown): McpToolRunResult 
   return toolOk({ issue: toMcpIssue(result.data.issue, project) });
 }
 
+function startTestRunTool(project: Project, input: unknown): McpToolRunResult {
+  const parsed = mcpStartTestRunSchema.safeParse(input);
+  if (!parsed.success) return toolFail(parsed.error.issues[0]?.message ?? "Invalid input.");
+
+  const result = startTestRun(project, parsed.data.testRunId, "Claude", "claude");
+  if (!result.ok) return toolFail(result.error);
+
+  return toolOk({ testRun: { runId: result.data.testRun.publicId, status: result.data.testRun.status } });
+}
+
+function submitTestResultTool(project: Project, input: unknown): McpToolRunResult {
+  const parsed = mcpSubmitTestResultSchema.safeParse(input);
+  if (!parsed.success) return toolFail(parsed.error.issues[0]?.message ?? "Invalid input.");
+
+  const result = submitTestResult(
+    project,
+    parsed.data.testRunId,
+    parsed.data.testCaseId,
+    {
+      status: parsed.data.status,
+      actualResult: parsed.data.actualResult,
+      needsHumanReview: parsed.data.needsHumanReview,
+      idempotencyKey: parsed.data.idempotencyKey,
+    },
+    "Claude",
+    "claude",
+  );
+  if (!result.ok) return toolFail(result.error);
+
+  // Hard business rule (03-CLAUDE-RULES.md): a fix does not verify an issue
+  // — only an applicable passed rerun can. Applies the same as it does for
+  // the manual runner, regardless of which entry point recorded the result.
+  applyRerunResultToIssuesForCase(project, result.data.testRun, parsed.data.testCaseId, result.data.result);
+
+  return toolOk({
+    result: {
+      testCaseId: parsed.data.testCaseId,
+      status: result.data.result.status,
+      needsHumanReview: Boolean(result.data.result.needsHumanReview),
+      recordedAt: result.data.result.recordedAt,
+    },
+    testRun: {
+      runId: result.data.testRun.publicId,
+      status: result.data.testRun.status,
+      progress: computeRunProgress(listTestResultsForRun(result.data.testRun.id)),
+    },
+  });
+}
+
+function completeTestRunTool(project: Project, input: unknown): McpToolRunResult {
+  const parsed = mcpCompleteTestRunSchema.safeParse(input);
+  if (!parsed.success) return toolFail(parsed.error.issues[0]?.message ?? "Invalid input.");
+
+  const result = completeTestRunFromClaude(project, parsed.data.testRunId, parsed.data.summary, "Claude");
+  if (!result.ok) return toolFail(result.error);
+
+  return toolOk({ progress: result.data.progress, needsReviewCount: result.data.needsReviewCount });
+}
+
 export function runMcpTool(tool: McpToolName, project: Project, input: unknown): McpToolRunResult {
   switch (tool) {
     case "health_check":
@@ -284,5 +362,11 @@ export function runMcpTool(tool: McpToolName, project: Project, input: unknown):
       return updateIssueStatusTool(project, input);
     case "record_issue_fix":
       return recordIssueFixTool(project, input);
+    case "start_test_run":
+      return startTestRunTool(project, input);
+    case "submit_test_result":
+      return submitTestResultTool(project, input);
+    case "complete_test_run":
+      return completeTestRunTool(project, input);
   }
 }

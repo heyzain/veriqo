@@ -10,6 +10,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Icon } from "@/components/ui/icon";
 import { Input, Textarea } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
+import { SegmentedControl } from "@/components/ui/segmented-control";
 import { testCaseStatuses } from "@/config/status.config";
 import { createTestRunAction, type CreateTestRunValues } from "@/features/test-runs/actions";
 import { idleState } from "@/lib/forms/action-state";
@@ -50,6 +51,7 @@ export function TestRunCreateForm({
   preselectedTestCaseIds,
 }: TestRunCreateFormProps) {
   const [state, formAction, isPending] = useActionState(createTestRunAction, idleState<CreateTestRunValues>());
+  const [executionMode, setExecutionMode] = React.useState(state.values?.executionMode ?? "manual");
 
   const validPreselected = React.useMemo(
     () => preselectedTestCaseIds.filter((id) => testCases.some((tc) => tc.publicId === id)),
@@ -88,6 +90,7 @@ export function TestRunCreateForm({
     <form action={formAction} noValidate className="flex flex-col gap-8">
       <input type="hidden" name="projectSlug" value={projectSlug} />
       <input type="hidden" name="testCaseIds" value={Array.from(selected).join(",")} />
+      <input type="hidden" name="executionMode" value={executionMode} />
 
       {state.formError ? (
         <p role="alert" className="rounded-sm border border-fail/30 bg-fail/10 px-3.5 py-2.5 text-body-sm text-fail">
@@ -97,6 +100,24 @@ export function TestRunCreateForm({
 
       <section className="flex flex-col gap-5">
         <h2 className="text-title-md text-foreground">Run details</h2>
+        <div className="flex flex-col gap-1.5">
+          <span className="text-label-style text-foreground-secondary">Execution mode</span>
+          <SegmentedControl
+            label="Execution mode"
+            value={executionMode}
+            onValueChange={setExecutionMode}
+            options={[
+              { value: "manual", label: "Manual" },
+              { value: "claudeAssisted", label: "Claude-assisted" },
+            ]}
+            className="w-fit"
+          />
+          <p className="text-body-sm text-foreground-muted">
+            {executionMode === "manual"
+              ? "You'll step through each test case in the focused runner."
+              : "Copy a prompt to Claude — it submits results over MCP as it goes, flagging any it isn't confident about for your review."}
+          </p>
+        </div>
         <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
           <Input
             label="Run name"

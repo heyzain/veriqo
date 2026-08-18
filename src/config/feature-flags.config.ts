@@ -5,7 +5,6 @@
  */
 export const featureFlags = {
   darkMode: false,
-  claudeAssistedRuns: false,
   teamWorkspaces: false,
   billing: false,
   ciIntegrations: false,
