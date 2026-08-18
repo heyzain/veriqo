@@ -1,7 +1,7 @@
 import "server-only";
 
 import { store } from "@/server/repositories/store";
-import type { Feature, Project, TestCase } from "@/types/domain";
+import type { Feature, Project, TestCase, TestResult, TestRun } from "@/types/domain";
 
 /**
  * Every read is scoped by `ownerId` at this layer — not just filtered in the
@@ -134,6 +134,50 @@ export function testCasePublicIdsWithPrefix(projectId: string, prefix: string): 
 
 export function listTestRunsForProject(projectId: string) {
   return Array.from(store.testRuns.values()).filter((tr) => tr.projectId === projectId);
+}
+
+/** Scoped by `projectId` so a public ID from another project can never resolve here. */
+export function findTestRunByPublicId(projectId: string, publicId: string): TestRun | null {
+  return (
+    Array.from(store.testRuns.values()).find(
+      (tr) => tr.projectId === projectId && tr.publicId === publicId,
+    ) ?? null
+  );
+}
+
+export function findTestRunById(projectId: string, id: string): TestRun | null {
+  const testRun = store.testRuns.get(id);
+  if (!testRun || testRun.projectId !== projectId) return null;
+  return testRun;
+}
+
+export function saveTestRun(testRun: TestRun): void {
+  store.testRuns.set(testRun.id, testRun);
+}
+
+/** Every `RUN-*` public ID already used in this project — the set `nextTestRunPublicId` scans for the next sequence number. */
+export function testRunPublicIds(projectId: string): Set<string> {
+  const ids = new Set<string>();
+  for (const tr of store.testRuns.values()) {
+    if (tr.projectId === projectId) ids.add(tr.publicId);
+  }
+  return ids;
+}
+
+export function listTestResultsForRun(testRunId: string): TestResult[] {
+  return Array.from(store.testResults.values()).filter((result) => result.testRunId === testRunId);
+}
+
+export function findTestResult(testRunId: string, testCaseId: string): TestResult | null {
+  return (
+    Array.from(store.testResults.values()).find(
+      (result) => result.testRunId === testRunId && result.testCaseId === testCaseId,
+    ) ?? null
+  );
+}
+
+export function saveTestResult(result: TestResult): void {
+  store.testResults.set(result.id, result);
 }
 
 export function listIssuesForProject(projectId: string) {

@@ -29,6 +29,7 @@ import {
   Loader2,
   type LucideIcon,
   MoreHorizontal,
+  Paperclip,
   Pause,
   Pencil,
   Plug,
@@ -40,6 +41,7 @@ import {
   Sparkles,
   SquareUser,
   Trash2,
+  Upload,
   User,
   Users,
   X,
@@ -109,6 +111,10 @@ const registry = {
   roles: Users,
   sourceReference: FileCode2,
   criteria: ListTodo,
+
+  // Test runs (Phase 6)
+  evidence: Paperclip,
+  upload: Upload,
 } as const satisfies Record<string, LucideIcon>;
 
 export type IconName = keyof typeof registry;

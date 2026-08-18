@@ -453,6 +453,14 @@ const releaseCandidate1: TestRun = {
   build: "1.4.0-rc.1",
   environment: "Staging",
   browser: "Chrome 128",
+  assigneeName: "Priya Nair",
+  selectedTestCaseIds: [authSignUpCase.id, privateVaultCase.id],
+  createdBySource: "human",
+  createdByName: "Priya Nair",
+  createdAt: "2026-08-10T09:00:00.000Z",
+  updatedAt: "2026-08-10T14:32:00.000Z",
+  startedAt: "2026-08-10T09:05:00.000Z",
+  completedAt: "2026-08-10T14:32:00.000Z",
 };
 
 const focusedRerun: TestRun = {
@@ -464,6 +472,63 @@ const focusedRerun: TestRun = {
   build: "1.4.0-rc.2",
   environment: "Staging",
   browser: "Chrome 128",
+  assigneeName: "Priya Nair",
+  selectedTestCaseIds: [privateVaultCase.id],
+  createdBySource: "human",
+  createdByName: "Priya Nair",
+  createdAt: "2026-08-12T09:50:00.000Z",
+  updatedAt: "2026-08-12T10:05:00.000Z",
+  startedAt: "2026-08-12T09:55:00.000Z",
+  completedAt: "2026-08-12T10:05:00.000Z",
+};
+
+const plannedRegressionRun: TestRun = {
+  id: "run-planned-sprint14",
+  publicId: formatPublicId("RUN", 25),
+  projectId: project.id,
+  name: "Sprint 14 Regression",
+  status: "planned",
+  build: "1.4.0-rc.2",
+  environment: "Staging",
+  browser: "Firefox 129",
+  assigneeName: "Priya Nair",
+  selectedTestCaseIds: [authSignUpCase.id, authInvalidLoginCase.id],
+  createdBySource: "human",
+  createdByName: "Priya Nair",
+  createdAt: "2026-08-15T09:00:00.000Z",
+  updatedAt: "2026-08-15T09:00:00.000Z",
+};
+
+const pausedNightlyRun: TestRun = {
+  id: "run-paused-nightly-auth",
+  publicId: formatPublicId("RUN", 26),
+  projectId: project.id,
+  name: "Nightly Manual Pass — Authentication",
+  status: "paused",
+  build: "1.4.0-rc.1",
+  environment: "Staging",
+  browser: "Chrome 128",
+  assigneeName: "Priya Nair",
+  notes: "Spot-checking auth flows ahead of the next candidate build.",
+  selectedTestCaseIds: [authSignUpCase.id, authInvalidLoginCase.id],
+  createdBySource: "human",
+  createdByName: "Priya Nair",
+  createdAt: "2026-08-16T20:00:00.000Z",
+  updatedAt: "2026-08-16T20:15:00.000Z",
+  startedAt: "2026-08-16T20:05:00.000Z",
+};
+
+const authOnePassInRC1: TestResult = {
+  id: "result-auth01-pass-rc1",
+  testRunId: releaseCandidate1.id,
+  testCaseId: authSignUpCase.id,
+  status: "pass",
+  actualResult: "Account was created and the user landed signed in.",
+  evidence: [],
+  recordedBySource: "human",
+  recordedByName: "Priya Nair",
+  recordedAt: "2026-08-10T14:10:00.000Z",
+  updatedAt: "2026-08-10T14:10:00.000Z",
 };
 
 const failingResult: TestResult = {
@@ -473,7 +538,11 @@ const failingResult: TestResult = {
   status: "fail",
   actualResult:
     "After a new session started, the previously unlocked vault links were still visible without re-entering the PIN.",
+  evidence: [],
+  recordedBySource: "human",
+  recordedByName: "Priya Nair",
   recordedAt: "2026-08-10T14:32:00.000Z",
+  updatedAt: "2026-08-10T14:32:00.000Z",
 };
 
 const passingResult: TestResult = {
@@ -482,7 +551,57 @@ const passingResult: TestResult = {
   testCaseId: privateVaultCase.id,
   status: "pass",
   actualResult: "Vault correctly required the PIN again after the new session started.",
+  evidence: [],
+  recordedBySource: "human",
+  recordedByName: "Priya Nair",
   recordedAt: "2026-08-12T10:05:00.000Z",
+  updatedAt: "2026-08-12T10:05:00.000Z",
+};
+
+const plannedResultAuth01: TestResult = {
+  id: "result-auth01-notrun-planned",
+  testRunId: plannedRegressionRun.id,
+  testCaseId: authSignUpCase.id,
+  status: "notRun",
+  evidence: [],
+  recordedBySource: "system",
+  recordedAt: plannedRegressionRun.createdAt,
+  updatedAt: plannedRegressionRun.createdAt,
+};
+
+const plannedResultAuth02: TestResult = {
+  id: "result-auth02-notrun-planned",
+  testRunId: plannedRegressionRun.id,
+  testCaseId: authInvalidLoginCase.id,
+  status: "notRun",
+  evidence: [],
+  recordedBySource: "system",
+  recordedAt: plannedRegressionRun.createdAt,
+  updatedAt: plannedRegressionRun.createdAt,
+};
+
+const pausedResultAuth01Pass: TestResult = {
+  id: "result-auth01-pass-nightly",
+  testRunId: pausedNightlyRun.id,
+  testCaseId: authSignUpCase.id,
+  status: "pass",
+  actualResult: "Sign-up succeeded and the user landed signed in, as expected.",
+  evidence: [],
+  recordedBySource: "human",
+  recordedByName: "Priya Nair",
+  recordedAt: "2026-08-16T20:12:00.000Z",
+  updatedAt: "2026-08-16T20:12:00.000Z",
+};
+
+const pausedResultAuth02NotRun: TestResult = {
+  id: "result-auth02-notrun-nightly",
+  testRunId: pausedNightlyRun.id,
+  testCaseId: authInvalidLoginCase.id,
+  status: "notRun",
+  evidence: [],
+  recordedBySource: "system",
+  recordedAt: pausedNightlyRun.createdAt,
+  updatedAt: pausedNightlyRun.createdAt,
 };
 
 const privateVaultIssue: Issue = {
@@ -689,6 +808,34 @@ const activity: ActivityEvent[] = [
     createdAt: "2026-08-06T11:00:00.000Z",
   },
   {
+    id: "activity-run-rc1-created",
+    projectId: project.id,
+    actorType: "human",
+    actorName: "Priya Nair",
+    action: `created ${releaseCandidate1.publicId} — ${releaseCandidate1.name} with 2 test cases selected`,
+    entityType: "testRun",
+    entityId: releaseCandidate1.id,
+    relatedEntities: [
+      { type: "testCase", id: authSignUpCase.id },
+      { type: "testCase", id: privateVaultCase.id },
+    ],
+    createdAt: releaseCandidate1.createdAt,
+  },
+  {
+    id: "activity-auth01-rc1",
+    projectId: project.id,
+    actorType: "human",
+    actorName: "Priya Nair",
+    action: `recorded a passing result for AUTH-01 in ${releaseCandidate1.name}`,
+    entityType: "testResult",
+    entityId: authOnePassInRC1.id,
+    relatedEntities: [
+      { type: "testCase", id: authSignUpCase.id },
+      { type: "testRun", id: releaseCandidate1.id },
+    ],
+    createdAt: authOnePassInRC1.recordedAt,
+  },
+  {
     id: "activity-04",
     projectId: project.id,
     actorType: "human",
@@ -780,6 +927,68 @@ const activity: ActivityEvent[] = [
     metadata: { promptId: PROMPT_ID, promptVersion: PROMPT_VERSION },
     createdAt: "2026-08-14T09:00:00.000Z",
   },
+  {
+    id: "activity-run-planned-created",
+    projectId: project.id,
+    actorType: "human",
+    actorName: "Priya Nair",
+    action: `created ${plannedRegressionRun.publicId} — ${plannedRegressionRun.name} with 2 test cases selected`,
+    entityType: "testRun",
+    entityId: plannedRegressionRun.id,
+    relatedEntities: [
+      { type: "testCase", id: authSignUpCase.id },
+      { type: "testCase", id: authInvalidLoginCase.id },
+    ],
+    createdAt: plannedRegressionRun.createdAt,
+  },
+  {
+    id: "activity-run-nightly-created",
+    projectId: project.id,
+    actorType: "human",
+    actorName: "Priya Nair",
+    action: `created ${pausedNightlyRun.publicId} — ${pausedNightlyRun.name} with 2 test cases selected`,
+    entityType: "testRun",
+    entityId: pausedNightlyRun.id,
+    relatedEntities: [
+      { type: "testCase", id: authSignUpCase.id },
+      { type: "testCase", id: authInvalidLoginCase.id },
+    ],
+    createdAt: pausedNightlyRun.createdAt,
+  },
+  {
+    id: "activity-run-nightly-started",
+    projectId: project.id,
+    actorType: "human",
+    actorName: "Priya Nair",
+    action: `started ${pausedNightlyRun.publicId}`,
+    entityType: "testRun",
+    entityId: pausedNightlyRun.id,
+    createdAt: pausedNightlyRun.startedAt!,
+  },
+  {
+    id: "activity-run-nightly-auth01",
+    projectId: project.id,
+    actorType: "human",
+    actorName: "Priya Nair",
+    action: `recorded a passing result for AUTH-01 in ${pausedNightlyRun.publicId}`,
+    entityType: "testResult",
+    entityId: pausedResultAuth01Pass.id,
+    relatedEntities: [
+      { type: "testCase", id: authSignUpCase.id },
+      { type: "testRun", id: pausedNightlyRun.id },
+    ],
+    createdAt: pausedResultAuth01Pass.recordedAt,
+  },
+  {
+    id: "activity-run-nightly-paused",
+    projectId: project.id,
+    actorType: "human",
+    actorName: "Priya Nair",
+    action: `paused ${pausedNightlyRun.publicId}`,
+    entityType: "testRun",
+    entityId: pausedNightlyRun.id,
+    createdAt: pausedNightlyRun.updatedAt,
+  },
 ];
 
 export const linkVaultSeed = {
@@ -792,8 +1001,16 @@ export const linkVaultSeed = {
     searchTypeaheadCase,
     searchTypeaheadDuplicateCase,
   ],
-  testRuns: [releaseCandidate1, focusedRerun],
-  testResults: [failingResult, passingResult],
+  testRuns: [releaseCandidate1, focusedRerun, plannedRegressionRun, pausedNightlyRun],
+  testResults: [
+    authOnePassInRC1,
+    failingResult,
+    passingResult,
+    plannedResultAuth01,
+    plannedResultAuth02,
+    pausedResultAuth01Pass,
+    pausedResultAuth02NotRun,
+  ],
   issues: [privateVaultIssue],
   activity,
 } as const;

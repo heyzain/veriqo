@@ -173,7 +173,7 @@ export function TestCaseRecordTable({
   }
 
   const groups = groupTestCases(testCases, grouping, features);
-  const addToRunHref = `/projects/${project.slug}/test-runs?testCaseIds=${Array.from(selected).join(",")}`;
+  const addToRunHref = `/projects/${project.slug}/test-runs/new?testCaseIds=${Array.from(selected).join(",")}`;
 
   return (
     <div className="flex flex-col gap-4">

@@ -111,7 +111,7 @@ export default async function ProjectTestCasesPage({
         </div>
 
         <Button asChild intent="primary" size="md">
-          <Link href={`/projects/${project.slug}/test-runs`}>
+          <Link href={`/projects/${project.slug}/test-runs/new`}>
             <Icon name="testRuns" size={16} />
             <span>Create test run</span>
           </Link>

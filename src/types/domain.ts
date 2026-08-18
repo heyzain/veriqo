@@ -152,9 +152,45 @@ export type TestRun = {
   projectId: string;
   name: string;
   status: TestRunStatus;
+  /** Build/release identifier under test, e.g. "1.4.0-rc.1". */
   build: string;
   environment: string;
+  /** Free-text browser/device, e.g. "Chrome 128", "iPhone 15 — Safari". */
   browser: string;
+  assigneeName?: string;
+  notes?: string;
+  /**
+   * Ordered — the sequence the focused runner (Phase 6) steps through.
+   * References `TestCase.id`. A `TestResult` exists for every entry from the
+   * moment the run is created (`notRun`), so progress is never inferred from
+   * a partial results list.
+   */
+  selectedTestCaseIds: readonly string[];
+  createdBySource: ActorType;
+  createdByName: string;
+  createdAt: string;
+  updatedAt: string;
+  /** Set the first time the run moves out of `planned`. */
+  startedAt?: string;
+  /** Set when every selected case has a result (`completed` or `needsAttention`). */
+  completedAt?: string;
+};
+
+/**
+ * A piece of evidence attached to a result (Phase 6 Build: "Evidence upload
+ * and preview"). `dataUrl` stands in for real object storage in this mock
+ * environment — a production backend would swap it for an uploaded file URL
+ * while keeping the same shape (03-CLAUDE-RULES.md, "Validate evidence file
+ * type, size, and access").
+ */
+export type TestEvidence = {
+  id: string;
+  name: string;
+  /** MIME type, validated against evidence.config.ts at upload time. */
+  type: string;
+  /** Bytes. */
+  size: number;
+  dataUrl: string;
 };
 
 export type TestResult = {
@@ -163,7 +199,11 @@ export type TestResult = {
   testCaseId: string;
   status: ResultStatus;
   actualResult?: string;
+  evidence: readonly TestEvidence[];
+  recordedBySource: ActorType;
+  recordedByName?: string;
   recordedAt: string;
+  updatedAt: string;
 };
 
 export type Issue = {
