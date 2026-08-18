@@ -111,6 +111,23 @@ export function ensureSeeded(): void {
     store.projects.set(project.id, project);
   }
 
+  // Seed domain entities for LinkVault
+  for (const feature of linkVaultSeed.features) {
+    store.features.set(feature.id, feature);
+  }
+  for (const testCase of linkVaultSeed.testCases) {
+    store.testCases.set(testCase.id, testCase);
+  }
+  for (const testRun of linkVaultSeed.testRuns) {
+    store.testRuns.set(testRun.id, testRun);
+  }
+  for (const testResult of linkVaultSeed.testResults) {
+    store.testResults.set(testResult.id, testResult);
+  }
+  for (const issue of linkVaultSeed.issues) {
+    store.issues.set(issue.id, issue);
+  }
+
   // LinkVault's full PV-07 → ISS-14 → fix → rerun → verified activity story.
   store.activity.push(...linkVaultSeed.activity);
 

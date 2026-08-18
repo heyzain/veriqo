@@ -28,3 +28,7 @@ export const createProjectSchema = z.object({
 });
 
 export type CreateProjectFormValues = z.infer<typeof createProjectSchema>;
+
+export const updateProjectSchema = createProjectSchema;
+export type UpdateProjectFormValues = z.infer<typeof updateProjectSchema>;
+

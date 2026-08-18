@@ -19,6 +19,12 @@ export function findProjectForOwner(slug: string, ownerId: string): Project | nu
   return project;
 }
 
+export function findProjectByIdForOwner(id: string, ownerId: string): Project | null {
+  const project = store.projects.get(id);
+  if (!project || project.ownerId !== ownerId) return null;
+  return project;
+}
+
 export function allSlugsAndCodes(): { slugs: Set<string>; codes: Set<string> } {
   const slugs = new Set<string>();
   const codes = new Set<string>();
@@ -32,3 +38,24 @@ export function allSlugsAndCodes(): { slugs: Set<string>; codes: Set<string> } {
 export function createProject(project: Project): void {
   store.projects.set(project.id, project);
 }
+
+export function updateProject(project: Project): void {
+  store.projects.set(project.id, project);
+}
+
+export function listFeaturesForProject(projectId: string) {
+  return Array.from(store.features.values()).filter((f) => f.projectId === projectId);
+}
+
+export function listTestCasesForProject(projectId: string) {
+  return Array.from(store.testCases.values()).filter((tc) => tc.projectId === projectId);
+}
+
+export function listTestRunsForProject(projectId: string) {
+  return Array.from(store.testRuns.values()).filter((tr) => tr.projectId === projectId);
+}
+
+export function listIssuesForProject(projectId: string) {
+  return Array.from(store.issues.values()).filter((iss) => iss.projectId === projectId);
+}
+

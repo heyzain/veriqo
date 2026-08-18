@@ -17,6 +17,11 @@ type Store = {
   tokens: Map<string, AuthToken>;
   invites: Map<string, Invite>;
   projects: Map<string, Project>;
+  features: Map<string, import("@/types/domain").Feature>;
+  testCases: Map<string, import("@/types/domain").TestCase>;
+  testRuns: Map<string, import("@/types/domain").TestRun>;
+  testResults: Map<string, import("@/types/domain").TestResult>;
+  issues: Map<string, import("@/types/domain").Issue>;
   activity: ActivityEvent[];
   seeded: boolean;
 };
@@ -28,6 +33,11 @@ function createStore(): Store {
     tokens: new Map(),
     invites: new Map(),
     projects: new Map(),
+    features: new Map(),
+    testCases: new Map(),
+    testRuns: new Map(),
+    testResults: new Map(),
+    issues: new Map(),
     activity: [],
     seeded: false,
   };

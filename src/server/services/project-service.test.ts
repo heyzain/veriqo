@@ -3,7 +3,13 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { store } from "@/server/repositories/store";
 import type { PublicUser } from "@/types/auth";
 
-import { createProjectForOwner, getProjectForOwner, listProjects } from "./project-service";
+import {
+  createProjectForOwner,
+  getProjectForOwner,
+  listProjects,
+  toggleProjectArchivedForOwner,
+  updateProjectForOwner,
+} from "./project-service";
 
 function resetStore() {
   store.users.clear();
@@ -97,3 +103,57 @@ describe("project-service — creation", () => {
     expect(first.publicId).not.toBe(second.publicId);
   });
 });
+
+describe("project-service — updates and settings", () => {
+  it("allows owner to update project settings and records activity", () => {
+    const project = createProjectForOwner(
+      { name: "Initial Name", description: "Initial description.", appUrl: "https://example.com", environment: "development" },
+      owner,
+    );
+
+    const updated = updateProjectForOwner(
+      project.slug,
+      {
+        name: "Updated Name",
+        description: "Updated description.",
+        appUrl: "https://updated.example.com",
+        environment: "production",
+        repository: "github.com/owner/repo",
+      },
+      owner,
+    );
+
+    expect(updated).not.toBeNull();
+    expect(updated?.name).toBe("Updated Name");
+    expect(updated?.environment).toBe("production");
+    expect(updated?.repository).toBe("github.com/owner/repo");
+
+    // Intruder cannot update owner's project
+    const unauthorized = updateProjectForOwner(
+      project.slug,
+      {
+        name: "Hacked",
+        description: "Hacked",
+        appUrl: "https://hacked.com",
+        environment: "staging",
+      },
+      intruder,
+    );
+    expect(unauthorized).toBeNull();
+  });
+
+  it("toggles archive state correctly", () => {
+    const project = createProjectForOwner(
+      { name: "Active Project", description: "Desc", appUrl: "https://example.com", environment: "staging" },
+      owner,
+    );
+    expect(project.archived).toBe(false);
+
+    const archived = toggleProjectArchivedForOwner(project.slug, owner);
+    expect(archived?.archived).toBe(true);
+
+    const unarchived = toggleProjectArchivedForOwner(project.slug, owner);
+    expect(unarchived?.archived).toBe(false);
+  });
+});
+
