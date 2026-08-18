@@ -13,7 +13,8 @@ import {
   saveConnectionState,
   saveCredential,
 } from "@/server/repositories/mcp-repository";
-import { findProjectBySlug, updateProject } from "@/server/repositories/project-repository";
+import { findProjectBySlug } from "@/server/repositories/project-repository";
+import { advanceSetupStep } from "@/server/services/project-service";
 import type {
   ActivityEvent,
   McpConnectionState,
@@ -198,9 +199,17 @@ function recordConnectionAttempt(
   saveConnectionState(next);
 }
 
-const toolActionLabel: Record<McpToolName, string> = {
+/**
+ * Generic "Claude ran a tool" activity line for read-only tools. `create_feature`
+ * and `update_feature` are deliberately absent — `feature-service.ts` already
+ * records a specific, useful line for those ("discovered X", "proposed an
+ * update to Y"), and logging both would duplicate the ledger entry for one
+ * MCP call.
+ */
+const toolActionLabel: Partial<Record<McpToolName, string>> = {
   health_check: "ran a health check over MCP",
   get_project_context: "read the project QA context over MCP",
+  list_features: "listed features over MCP",
 };
 
 function extractBearerToken(header: string | null): string | null {
@@ -228,7 +237,9 @@ export function handleMcpRequest(
     return { httpStatus: 429, body: { ok: false, error: "Too many requests. Try again shortly." } };
   }
 
-  const tool = body && typeof body === "object" ? (body as Record<string, unknown>).tool : undefined;
+  const bodyObject = body && typeof body === "object" ? (body as Record<string, unknown>) : {};
+  const tool = bodyObject.tool;
+  const input = bodyObject.input;
   if (!isMcpToolName(tool)) {
     return {
       httpStatus: 400,
@@ -262,14 +273,11 @@ export function handleMcpRequest(
   }
 
   recordConnectionAttempt(project.id, { status: "success", credentialId: active.id, tool });
-  logMcpActivity(project.id, "claude", "Claude", toolActionLabel[tool], active.id);
 
   // Reassign so `runMcpTool` below reports the up-to-date step count on the
   // very request that completes the transition, not the stale pre-update value.
-  let currentProject = project;
-  if (project.setupStepsCompleted < 2) {
-    currentProject = { ...project, setupStepsCompleted: 2 };
-    updateProject(currentProject);
+  const currentProject = advanceSetupStep(project, 2);
+  if (currentProject !== project) {
     logMcpActivity(
       project.id,
       "system",
@@ -279,5 +287,15 @@ export function handleMcpRequest(
     );
   }
 
-  return { httpStatus: 200, body: { ok: true, tool, result: runMcpTool(tool, currentProject) } };
+  const toolResult = runMcpTool(tool, currentProject, input);
+  if (!toolResult.ok) {
+    return { httpStatus: 400, body: { ok: false, error: toolResult.error } };
+  }
+
+  const genericLabel = toolActionLabel[tool];
+  if (genericLabel) {
+    logMcpActivity(project.id, "claude", "Claude", genericLabel, active.id);
+  }
+
+  return { httpStatus: 200, body: { ok: true, tool, result: toolResult.result } };
 }

@@ -69,8 +69,8 @@ export function McpSetupInstructions({ projectSlug, projectName }: McpSetupInstr
           </div>
           <McpCommandBlock label="Terminal command" value={claudeCodeCommand} />
           <div className="border-t border-subtle pt-3 text-body-sm text-foreground-secondary">
-            Once connected, Claude can read {projectName}&apos;s QA context — later phases add saving
-            features, tests, and results directly here.
+            Once connected, Claude can read {projectName}&apos;s QA context and save discovered features
+            directly here — later phases add tests, runs, and results the same way.
           </div>
         </div>
       </TabsContent>

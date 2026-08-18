@@ -193,6 +193,22 @@ export function updateProjectForOwner(
   return updated;
 }
 
+/**
+ * Bumps `setupStepsCompleted` up to `step`, never down and never past it in
+ * one call — each guided-setup step (setup-steps.config.ts) is only ever
+ * satisfied by the specific event that proves it, not by unrelated later
+ * activity. Shared by every service that can complete a step (MCP connection,
+ * feature discovery/review, …) so the "already satisfied" check lives in one
+ * place. Returns the project unchanged when nothing moved, so callers can
+ * compare by reference to decide whether to log a "step complete" event.
+ */
+export function advanceSetupStep(project: Project, step: number): Project {
+  if (project.setupStepsCompleted >= step) return project;
+  const updated: Project = { ...project, setupStepsCompleted: step };
+  updateProject(updated);
+  return updated;
+}
+
 export function toggleProjectArchivedForOwner(slug: string, owner: PublicUser): Project | null {
   ensureSeeded();
   const project = findProjectForOwner(slug, owner.id);

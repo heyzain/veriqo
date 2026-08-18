@@ -10,7 +10,8 @@ import type { Feature, Issue, Project } from "@/types/domain";
  * Guards against the panel reverting to hardcoded copy (00-PRODUCT.md,
  * "Evidence over confidence theater" — every claim must trace to a real
  * record). Asserts against the actual LinkVault seed counts rather than
- * fabricated numbers: 6/10 features approved, 1/1 issues verified.
+ * fabricated numbers: 6/11 features approved (11 includes the Phase 4
+ * possible-duplicate feature, FEAT-11), 1/1 issues verified.
  */
 function buildRecords(overrides: Partial<ProjectRecords> = {}): ProjectRecords {
   return {
@@ -28,11 +29,11 @@ describe("ReleaseNarrativePanel", () => {
   it("derives the headline and factors from real feature/issue counts", () => {
     render(<ReleaseNarrativePanel records={buildRecords()} />);
 
-    // 6 of 10 LinkVault features are approved — never a fabricated 8/10.
+    // 6 of 11 LinkVault features are approved — never a fabricated count.
     expect(
-      screen.getByText("Every tracked issue is verified, with 6 of 10 features approved for coverage."),
+      screen.getByText("Every tracked issue is verified, with 6 of 11 features approved for coverage."),
     ).toBeDefined();
-    expect(screen.getByText("6 / 10 Features Approved")).toBeDefined();
+    expect(screen.getByText("6 / 11 Features Approved")).toBeDefined();
 
     // The one real verified issue (ISS-14), not an invented rerun ID.
     expect(screen.getByText("1 verified fix")).toBeDefined();
@@ -49,7 +50,7 @@ describe("ReleaseNarrativePanel", () => {
     render(<ReleaseNarrativePanel records={buildRecords()} />);
 
     expect(
-      screen.getAllByText(/Tags, Import\/Export, PWA Installation, Sessions/).length,
+      screen.getAllByText(/Tags, Import\/Export, PWA Installation, Sessions, Full-text Search/).length,
     ).toBeGreaterThan(0);
   });
 

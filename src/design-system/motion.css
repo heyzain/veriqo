@@ -25,6 +25,26 @@
   transition-timing-function: var(--ease-standard);
 }
 
+/**
+ * "Activity insertion: subtle fade and 6px slide" (01-DESIGN-SYSTEM.md,
+ * "Motion") — applied to a newly-arrived row in `AgentActivityStream` and
+ * similar incoming-activity lists.
+ */
+@keyframes activity-enter {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@utility animate-activity-enter {
+  animation: activity-enter var(--motion-slow) var(--ease-standard);
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

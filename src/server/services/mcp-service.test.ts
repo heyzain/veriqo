@@ -18,6 +18,11 @@ function resetStore() {
   store.tokens.clear();
   store.invites.clear();
   store.projects.clear();
+  store.features.clear();
+  store.testCases.clear();
+  store.testRuns.clear();
+  store.testResults.clear();
+  store.issues.clear();
   store.mcpCredentials.clear();
   store.mcpConnectionStates.clear();
   store.activity.length = 0;
@@ -170,5 +175,82 @@ describe("mcp-service — inbound request authorization", () => {
       lastStatus = handleMcpRequest(project.slug, `Bearer ${secret}`, { tool: "health_check" }).httpStatus;
     }
     expect(lastStatus).toBe(429);
+  });
+});
+
+describe("mcp-service — Phase 4 feature tools", () => {
+  const featureInput = {
+    name: "Authentication",
+    description: "Sign up and sign in.",
+    risk: "high",
+    acceptanceCriteria: ["A user can sign in with valid credentials."],
+  };
+
+  it("create_feature saves a feature that starts Needs review and bumps setup step 3", () => {
+    const project = makeProject("Nu");
+    const { secret } = issueMcpCredential(project, owner.name);
+
+    const result = handleMcpRequest(project.slug, `Bearer ${secret}`, {
+      tool: "create_feature",
+      input: featureInput,
+    });
+
+    expect(result.httpStatus).toBe(200);
+    expect(result.body.ok).toBe(true);
+    if (!result.body.ok) return;
+    const feature = result.body.result.feature as { status: string; featureId: string };
+    expect(feature.status).toBe("needsReview");
+    expect(feature.featureId).toMatch(/^FEAT-/);
+  });
+
+  it("rejects create_feature input that fails schema validation, without leaking a stack trace", () => {
+    const project = makeProject("Xi");
+    const { secret } = issueMcpCredential(project, owner.name);
+
+    const result = handleMcpRequest(project.slug, `Bearer ${secret}`, {
+      tool: "create_feature",
+      input: { name: "A" }, // too short, missing required fields
+    });
+
+    expect(result.httpStatus).toBe(400);
+    expect(result.body.ok).toBe(false);
+  });
+
+  it("update_feature resolves the target by public ID and rejects an unknown one", () => {
+    const project = makeProject("Omicron");
+    const { secret } = issueMcpCredential(project, owner.name);
+
+    const created = handleMcpRequest(project.slug, `Bearer ${secret}`, {
+      tool: "create_feature",
+      input: featureInput,
+    });
+    if (!created.body.ok) throw new Error("setup failed");
+    const featureId = (created.body.result.feature as { featureId: string }).featureId;
+
+    const updated = handleMcpRequest(project.slug, `Bearer ${secret}`, {
+      tool: "update_feature",
+      input: { featureId, description: "Sign up, sign in, and recover a password." },
+    });
+    expect(updated.httpStatus).toBe(200);
+
+    const missing = handleMcpRequest(project.slug, `Bearer ${secret}`, {
+      tool: "update_feature",
+      input: { featureId: "FEAT-99" },
+    });
+    expect(missing.httpStatus).toBe(400);
+  });
+
+  it("list_features never returns another project's features (tenant isolation)", () => {
+    const projectA = makeProject("Pi");
+    const projectB = makeProject("Rho");
+    const { secret: secretA } = issueMcpCredential(projectA, owner.name);
+    const { secret: secretB } = issueMcpCredential(projectB, owner.name);
+
+    handleMcpRequest(projectA.slug, `Bearer ${secretA}`, { tool: "create_feature", input: featureInput });
+
+    const forB = handleMcpRequest(projectB.slug, `Bearer ${secretB}`, { tool: "list_features", input: {} });
+    expect(forB.httpStatus).toBe(200);
+    if (!forB.body.ok) return;
+    expect(forB.body.result.features).toEqual([]);
   });
 });

@@ -16,7 +16,12 @@ import type {
  *
  * Carries the required story end-to-end: `PV-07` fails in `Release
  * Candidate 1`, becomes `ISS-14`, gets a recorded fix, and is verified by a
- * focused rerun that passes.
+ * focused rerun that passes. Features additionally carry a full Phase 4
+ * discovery-and-review story: 10 features discovered and mostly reviewed on
+ * day one, then a second Claude pass on `2026-08-05` that surfaces a
+ * possible duplicate (`FEAT-11`) and, on `2026-08-14`, proposes an update to
+ * an already-approved feature (`FEAT-08`) that a human still needs to
+ * review — the `changed`-status diff example.
  */
 
 const project: Project = {
@@ -34,6 +39,9 @@ const project: Project = {
   createdAt: "2026-07-01T09:00:00.000Z",
 };
 
+const PROMPT_ID = "feature-discovery";
+const PROMPT_VERSION = 1;
+
 const features: Feature[] = [
   {
     id: "feat-authentication",
@@ -43,6 +51,23 @@ const features: Feature[] = [
     description: "Sign up, sign in, and session recovery for a LinkVault account.",
     status: "approved",
     risk: "high",
+    acceptanceCriteria: [
+      "A new account can be created with a unique email and a password meeting the minimum strength rules.",
+      "Signing in with valid credentials starts a session; invalid credentials show one generic error.",
+      "A user can request a password-reset email and set a new password from its link.",
+      "An expired or already-used reset link is rejected with a clear message.",
+    ],
+    roles: ["Any visitor", "Signed-in user"],
+    dependencies: [],
+    sourceReferences: [
+      { path: "src/features/auth/session.ts", note: "Session creation and expiry." },
+      { path: "src/features/auth/sign-in-form.tsx", note: "Sign-in form and validation." },
+    ],
+    createdBySource: "claude",
+    promptId: PROMPT_ID,
+    promptVersion: PROMPT_VERSION,
+    createdAt: "2026-07-01T09:23:00.000Z",
+    updatedAt: "2026-07-02T11:05:00.000Z",
   },
   {
     id: "feat-link-management",
@@ -52,6 +77,23 @@ const features: Feature[] = [
     description: "Save, edit, and remove links, with metadata fetched automatically.",
     status: "approved",
     risk: "medium",
+    acceptanceCriteria: [
+      "A link can be saved with a URL, and its title/favicon are fetched automatically.",
+      "An existing link's title, notes, and category can be edited.",
+      "A link can be removed, with a confirmation step.",
+      "Saving an unreachable URL still succeeds, with metadata left blank.",
+    ],
+    roles: ["Signed-in user"],
+    dependencies: ["FEAT-01"],
+    sourceReferences: [
+      { path: "src/features/links/actions.ts" },
+      { path: "src/features/links/metadata-fetcher.ts", note: "Automatic title/favicon lookup." },
+    ],
+    createdBySource: "claude",
+    promptId: PROMPT_ID,
+    promptVersion: PROMPT_VERSION,
+    createdAt: "2026-07-01T09:24:00.000Z",
+    updatedAt: "2026-07-01T09:24:00.000Z",
   },
   {
     id: "feat-categories",
@@ -61,6 +103,19 @@ const features: Feature[] = [
     description: "Group links into user-defined categories.",
     status: "approved",
     risk: "low",
+    acceptanceCriteria: [
+      "A user can create a category with a name and color.",
+      "A link can be assigned to exactly one category.",
+      "Deleting a category leaves its links uncategorized rather than deleting them.",
+    ],
+    roles: ["Signed-in user"],
+    dependencies: ["FEAT-02"],
+    sourceReferences: [{ path: "src/features/categories/actions.ts" }],
+    createdBySource: "claude",
+    promptId: PROMPT_ID,
+    promptVersion: PROMPT_VERSION,
+    createdAt: "2026-07-01T09:25:00.000Z",
+    updatedAt: "2026-07-01T09:25:00.000Z",
   },
   {
     id: "feat-tags",
@@ -70,6 +125,19 @@ const features: Feature[] = [
     description: "Free-form tagging with autocomplete from existing tags.",
     status: "needsReview",
     risk: "low",
+    acceptanceCriteria: [
+      "A link can have any number of free-form tags.",
+      "Typing a tag suggests existing tags via autocomplete.",
+      "Removing the last link with a tag removes the tag from suggestions.",
+    ],
+    roles: ["Signed-in user"],
+    dependencies: ["FEAT-02"],
+    sourceReferences: [{ path: "src/features/tags/tag-input.tsx" }],
+    createdBySource: "claude",
+    promptId: PROMPT_ID,
+    promptVersion: PROMPT_VERSION,
+    createdAt: "2026-07-01T09:26:00.000Z",
+    updatedAt: "2026-07-01T09:26:00.000Z",
   },
   {
     id: "feat-favorites",
@@ -79,6 +147,18 @@ const features: Feature[] = [
     description: "Star links for quick access from the home view.",
     status: "approved",
     risk: "low",
+    acceptanceCriteria: [
+      "A link can be starred and unstarred from both the list and detail view.",
+      "Starred links appear in a dedicated Favorites view, most recently starred first.",
+    ],
+    roles: ["Signed-in user"],
+    dependencies: ["FEAT-02"],
+    sourceReferences: [{ path: "src/features/favorites/toggle-favorite.ts" }],
+    createdBySource: "claude",
+    promptId: PROMPT_ID,
+    promptVersion: PROMPT_VERSION,
+    createdAt: "2026-07-01T09:27:00.000Z",
+    updatedAt: "2026-07-01T09:27:00.000Z",
   },
   {
     id: "feat-search",
@@ -88,6 +168,19 @@ const features: Feature[] = [
     description: "Full-text search across link titles, notes, and tags.",
     status: "approved",
     risk: "medium",
+    acceptanceCriteria: [
+      "Search matches link titles, notes, and tags.",
+      "Results update as the user types, with no more than a brief delay.",
+      "An empty query clears results rather than showing everything.",
+    ],
+    roles: ["Signed-in user"],
+    dependencies: ["FEAT-02", "FEAT-04"],
+    sourceReferences: [{ path: "src/features/search/search-index.ts" }],
+    createdBySource: "claude",
+    promptId: PROMPT_ID,
+    promptVersion: PROMPT_VERSION,
+    createdAt: "2026-07-01T09:28:00.000Z",
+    updatedAt: "2026-07-02T11:15:00.000Z",
   },
   {
     id: "feat-private-vault",
@@ -97,15 +190,66 @@ const features: Feature[] = [
     description: "A PIN-locked space for sensitive links that re-locks after the session ends.",
     status: "approved",
     risk: "high",
+    acceptanceCriteria: [
+      "The vault requires a PIN to unlock, separate from the account password.",
+      "Vault-only links never appear outside the vault, even in global search.",
+      "The vault re-locks automatically after the session ends.",
+      "Three incorrect PIN attempts introduce a short cool-down before retrying.",
+    ],
+    roles: ["Vault owner"],
+    dependencies: ["FEAT-01"],
+    sourceReferences: [
+      { path: "src/features/vault/unlock-vault.ts", note: "PIN verification and unlock flag." },
+      {
+        path: "src/features/vault/session.ts",
+        note: "Where the unlocked flag is stored — the site of ISS-14.",
+      },
+    ],
+    createdBySource: "claude",
+    promptId: PROMPT_ID,
+    promptVersion: PROMPT_VERSION,
+    createdAt: "2026-07-01T09:29:00.000Z",
+    updatedAt: "2026-07-02T11:10:00.000Z",
   },
   {
     id: "feat-import-export",
     publicId: formatPublicId("FEAT", 8),
     projectId: project.id,
     name: "Import/Export",
-    description: "Bulk import from bookmark files and export the full library as JSON.",
+    description:
+      "Bulk import from bookmark files, and export the full library — including any currently unlocked vault links — as JSON.",
     status: "changed",
     risk: "medium",
+    acceptanceCriteria: [
+      "Bookmarks can be imported from a Netscape-format HTML file.",
+      "Duplicate URLs are skipped during import rather than creating copies.",
+      "The full library, including vault links unlocked this session, can be exported as JSON.",
+      "A failed import reports which rows were skipped and why.",
+    ],
+    roles: ["Signed-in user"],
+    dependencies: ["FEAT-02", "FEAT-07"],
+    sourceReferences: [
+      {
+        path: "src/features/import-export/export-library.ts",
+        note: "Re-analysis found vault links are included in the export whenever the vault is unlocked.",
+      },
+    ],
+    // The pre-approved content Claude's 2026-08-14 re-analysis overwrote —
+    // the diff the review UI renders while this feature is `changed`.
+    previousSnapshot: {
+      name: "Import/Export",
+      description: "Bulk import from bookmark files and export the full library as JSON.",
+      risk: "medium",
+      acceptanceCriteria: [
+        "Bookmarks can be imported from a Netscape-format HTML file.",
+        "The full library can be exported as JSON.",
+      ],
+    },
+    createdBySource: "claude",
+    promptId: PROMPT_ID,
+    promptVersion: PROMPT_VERSION,
+    createdAt: "2026-07-01T09:30:00.000Z",
+    updatedAt: "2026-08-14T09:00:00.000Z",
   },
   {
     id: "feat-pwa-installation",
@@ -115,6 +259,19 @@ const features: Feature[] = [
     description: "Install LinkVault as a standalone app on desktop and mobile.",
     status: "draft",
     risk: "low",
+    acceptanceCriteria: [
+      "The app is installable from the browser's install prompt on desktop and mobile.",
+      "The installed app opens to the last-viewed view.",
+      "Previously loaded links remain readable offline.",
+    ],
+    roles: [],
+    dependencies: [],
+    sourceReferences: [{ path: "public/manifest.json" }, { path: "src/app/sw.ts" }],
+    createdBySource: "claude",
+    promptId: PROMPT_ID,
+    promptVersion: PROMPT_VERSION,
+    createdAt: "2026-07-01T09:31:00.000Z",
+    updatedAt: "2026-07-01T09:31:00.000Z",
   },
   {
     id: "feat-sessions",
@@ -124,6 +281,45 @@ const features: Feature[] = [
     description: "Active-session visibility and remote sign-out from other devices.",
     status: "needsReview",
     risk: "medium",
+    acceptanceCriteria: [
+      "Active sessions list device, approximate location, and last-active time.",
+      "A session other than the current one can be revoked remotely.",
+      "Revoking a session signs it out within a few seconds.",
+    ],
+    roles: ["Signed-in user"],
+    dependencies: ["FEAT-01"],
+    sourceReferences: [{ path: "src/features/sessions/session-list.tsx" }],
+    createdBySource: "claude",
+    promptId: PROMPT_ID,
+    promptVersion: PROMPT_VERSION,
+    createdAt: "2026-07-01T09:32:00.000Z",
+    updatedAt: "2026-07-01T09:32:00.000Z",
+  },
+  {
+    id: "feat-search-duplicate",
+    publicId: formatPublicId("FEAT", 11),
+    projectId: project.id,
+    name: "Full-text Search",
+    description: "Search across link titles, notes, and tag text using a ranked full-text index.",
+    status: "needsReview",
+    risk: "low",
+    acceptanceCriteria: [
+      "Results are ranked by relevance rather than recency.",
+      "Common stop words are ignored when matching.",
+    ],
+    roles: ["Signed-in user"],
+    dependencies: [],
+    sourceReferences: [{ path: "src/features/search/fulltext-index.ts" }],
+    // A second discovery pass described the same behavior as FEAT-06 in
+    // different words — surfaced for review instead of silently created or
+    // silently merged (Phase 4 acceptance: "Duplicate/conflicting features
+    // are surfaced").
+    possibleDuplicateOfId: "feat-search",
+    createdBySource: "claude",
+    promptId: PROMPT_ID,
+    promptVersion: PROMPT_VERSION,
+    createdAt: "2026-08-05T10:00:00.000Z",
+    updatedAt: "2026-08-05T10:00:00.000Z",
   },
 ];
 
@@ -199,6 +395,12 @@ const privateVaultIssue: Issue = {
   rerunResultId: passingResult.id,
 };
 
+/**
+ * The full Phase 4 feature-discovery-and-review story, in chronological
+ * order alongside the pre-existing PV-07 story (kept together in one array
+ * — a `linkvault.test.ts` assertion checks the whole thing sorts ascending
+ * by `createdAt` as written).
+ */
 const activity: ActivityEvent[] = [
   {
     id: "activity-01",
@@ -210,15 +412,30 @@ const activity: ActivityEvent[] = [
     entityId: project.id,
     createdAt: "2026-07-01T09:00:00.000Z",
   },
+  ...features
+    .filter((f) => f.id !== "feat-search-duplicate")
+    .map(
+      (f): ActivityEvent => ({
+        id: `activity-discover-${f.publicId}`,
+        projectId: project.id,
+        actorType: "claude",
+        actorName: "Claude",
+        action: `discovered "${f.name}" (${f.publicId}) from the codebase`,
+        entityType: "feature",
+        entityId: f.id,
+        metadata: { promptId: f.promptId, promptVersion: f.promptVersion },
+        createdAt: f.createdAt,
+      }),
+    ),
   {
-    id: "activity-02",
+    id: "activity-approve-feat-01",
     projectId: project.id,
-    actorType: "claude",
-    actorName: "Claude",
-    action: "discovered 10 features from the codebase",
+    actorType: "human",
+    actorName: "Priya Nair",
+    action: "approved FEAT-01 — Authentication",
     entityType: "feature",
-    entityId: "feat-private-vault",
-    createdAt: "2026-07-01T09:22:00.000Z",
+    entityId: "feat-authentication",
+    createdAt: "2026-07-02T11:05:00.000Z",
   },
   {
     id: "activity-03",
@@ -229,6 +446,28 @@ const activity: ActivityEvent[] = [
     entityType: "feature",
     entityId: "feat-private-vault",
     createdAt: "2026-07-02T11:10:00.000Z",
+  },
+  {
+    id: "activity-approve-feat-06",
+    projectId: project.id,
+    actorType: "human",
+    actorName: "Priya Nair",
+    action: "approved FEAT-06 — Search",
+    entityType: "feature",
+    entityId: "feat-search",
+    createdAt: "2026-07-02T11:15:00.000Z",
+  },
+  {
+    id: "activity-discover-feat-11",
+    projectId: project.id,
+    actorType: "claude",
+    actorName: "Claude",
+    action: 'discovered "Full-text Search" (FEAT-11) — possible duplicate of FEAT-06',
+    entityType: "feature",
+    entityId: "feat-search-duplicate",
+    relatedEntities: [{ type: "feature", id: "feat-search" }],
+    metadata: { promptId: PROMPT_ID, promptVersion: PROMPT_VERSION },
+    createdAt: "2026-08-05T10:00:00.000Z",
   },
   {
     id: "activity-04",
@@ -310,6 +549,17 @@ const activity: ActivityEvent[] = [
     entityId: privateVaultIssue.id,
     relatedEntities: [{ type: "testResult", id: passingResult.id }],
     createdAt: "2026-08-12T10:05:30.000Z",
+  },
+  {
+    id: "activity-update-feat-08",
+    projectId: project.id,
+    actorType: "claude",
+    actorName: "Claude",
+    action: "proposed an update to FEAT-08 — now awaiting review",
+    entityType: "feature",
+    entityId: "feat-import-export",
+    metadata: { promptId: PROMPT_ID, promptVersion: PROMPT_VERSION },
+    createdAt: "2026-08-14T09:00:00.000Z",
   },
 ];
 

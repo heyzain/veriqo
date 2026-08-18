@@ -38,6 +38,27 @@ export type Project = {
   createdAt: string;
 };
 
+/** A codebase location Claude cited as evidence for a discovered feature. */
+export type FeatureSourceReference = {
+  path: string;
+  note?: string;
+};
+
+/**
+ * The snapshot of a feature's reviewable content immediately before Claude's
+ * latest proposed update overwrote it — kept only while `status === "changed"`
+ * so the review UI can render a before/after diff (01-DESIGN-SYSTEM.md,
+ * "Diff/review treatment for Claude updates", Phase 4). Cleared once a human
+ * approves or edits the feature, since at that point there is nothing left
+ * to compare against.
+ */
+export type FeatureSnapshot = {
+  name: string;
+  description: string;
+  risk: RiskLevel;
+  acceptanceCriteria: readonly string[];
+};
+
 export type Feature = {
   id: string;
   publicId: string;
@@ -46,6 +67,33 @@ export type Feature = {
   description: string;
   status: FeatureStatus;
   risk: RiskLevel;
+  acceptanceCriteria: readonly string[];
+  /** User roles this feature behaves differently for, e.g. "Vault owner". */
+  roles: readonly string[];
+  /** Other features this one depends on, referenced by their `publicId`. */
+  dependencies: readonly string[];
+  sourceReferences: readonly FeatureSourceReference[];
+  /**
+   * Set when this feature was created alongside an existing one with a
+   * confusingly similar name — surfaced for human review rather than
+   * silently merged or silently duplicated (Phase 4 acceptance: "Duplicate/
+   * conflicting features are surfaced"). References another `Feature.id`.
+   */
+  possibleDuplicateOfId?: string;
+  previousSnapshot?: FeatureSnapshot;
+  /** Who produced the current content — labels the record by source (03-CLAUDE-RULES.md). */
+  createdBySource: ActorType;
+  promptId?: string;
+  promptVersion?: number;
+  /**
+   * Caller-supplied key from the MCP `create_feature` call, if any — a
+   * retried call with the same key returns the already-created feature
+   * instead of inserting a duplicate (04-CONFIG-BLUEPRINT.md, "Use
+   * idempotency keys for MCP writes and retried mutations").
+   */
+  idempotencyKey?: string;
+  createdAt: string;
+  updatedAt: string;
 };
 
 export type TestCase = {

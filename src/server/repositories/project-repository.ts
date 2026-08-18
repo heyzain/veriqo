@@ -1,7 +1,7 @@
 import "server-only";
 
 import { store } from "@/server/repositories/store";
-import type { Project } from "@/types/domain";
+import type { Feature, Project } from "@/types/domain";
 
 /**
  * Every read is scoped by `ownerId` at this layer — not just filtered in the
@@ -54,8 +54,50 @@ export function updateProject(project: Project): void {
   store.projects.set(project.id, project);
 }
 
-export function listFeaturesForProject(projectId: string) {
+export function listFeaturesForProject(projectId: string): Feature[] {
   return Array.from(store.features.values()).filter((f) => f.projectId === projectId);
+}
+
+/** Scoped by `projectId` so a public ID from another project can never resolve here. */
+export function findFeatureByPublicId(projectId: string, publicId: string): Feature | null {
+  return (
+    Array.from(store.features.values()).find(
+      (f) => f.projectId === projectId && f.publicId === publicId,
+    ) ?? null
+  );
+}
+
+export function findFeatureById(projectId: string, id: string): Feature | null {
+  const feature = store.features.get(id);
+  if (!feature || feature.projectId !== projectId) return null;
+  return feature;
+}
+
+export function nextFeatureSequence(projectId: string): number {
+  return listFeaturesForProject(projectId).length + 1;
+}
+
+export function saveFeature(feature: Feature): void {
+  store.features.set(feature.id, feature);
+}
+
+/**
+ * Re-points every test case and issue referencing `fromFeatureId` to
+ * `toFeatureId` — used when merging a duplicate feature so its connected
+ * records (00-PRODUCT.md domain relationships) survive the merge instead of
+ * dangling against an archived feature.
+ */
+export function reassignFeatureReferences(fromFeatureId: string, toFeatureId: string): void {
+  for (const testCase of store.testCases.values()) {
+    if (testCase.featureId === fromFeatureId) {
+      store.testCases.set(testCase.id, { ...testCase, featureId: toFeatureId });
+    }
+  }
+  for (const issue of store.issues.values()) {
+    if (issue.featureId === fromFeatureId) {
+      store.issues.set(issue.id, { ...issue, featureId: toFeatureId });
+    }
+  }
 }
 
 export function listTestCasesForProject(projectId: string) {

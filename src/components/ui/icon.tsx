@@ -16,12 +16,16 @@ import {
   Copy,
   Eye,
   EyeOff,
+  FileCode2,
   FileInput,
   FlaskConical,
+  GitMerge,
   Info,
   KeyRound,
   LayoutDashboard,
+  Link2,
   ListChecks,
+  ListTodo,
   Loader2,
   type LucideIcon,
   MoreHorizontal,
@@ -37,6 +41,7 @@ import {
   SquareUser,
   Trash2,
   User,
+  Users,
   X,
 } from "lucide-react";
 
@@ -97,6 +102,13 @@ const registry = {
   warning: AlertTriangle,
   key: KeyRound,
   revoke: Trash2,
+
+  // Feature relationships (Phase 4)
+  merge: GitMerge,
+  dependency: Link2,
+  roles: Users,
+  sourceReference: FileCode2,
+  criteria: ListTodo,
 } as const satisfies Record<string, LucideIcon>;
 
 export type IconName = keyof typeof registry;
