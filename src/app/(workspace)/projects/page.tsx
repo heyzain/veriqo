@@ -22,7 +22,7 @@ export default async function ProjectsPage({
   const { q = "", view: rawView } = await searchParams;
   const view = rawView === "archived" ? "archived" : "active";
 
-  const { active, archived } = listProjects(user);
+  const { active, archived } = await listProjects(user);
   const totalOwned = active.length + archived.length;
   const scoped = view === "archived" ? archived : active;
   const query = q.trim().toLowerCase();
@@ -33,6 +33,11 @@ export default async function ProjectsPage({
           project.description.toLowerCase().includes(query),
       )
     : scoped;
+  const lastActivityByProjectId = new Map(
+    await Promise.all(
+      visible.map(async (project) => [project.id, await getLastActivityForProject(project.id)] as const),
+    ),
+  );
 
   return (
     <div className="mx-auto flex max-w-[1480px] flex-col gap-8 px-6 py-10 sm:px-8 sm:py-12">
@@ -91,7 +96,7 @@ export default async function ProjectsPage({
                 <ProjectRecordCard
                   key={project.id}
                   project={project}
-                  lastActivity={getLastActivityForProject(project.id)}
+                  lastActivity={lastActivityByProjectId.get(project.id)}
                 />
               ))}
             </div>

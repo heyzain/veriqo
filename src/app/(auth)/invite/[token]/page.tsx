@@ -15,7 +15,7 @@ export default async function InviteAcceptancePage({
   params: Promise<{ token: string }>;
 }) {
   const { token } = await params;
-  const invite = getInvite(token);
+  const invite = await getInvite(token);
 
   if (!invite) {
     return (

@@ -27,7 +27,7 @@ const entityTypeLabel: Record<string, string> = {
  * reference is a real deep link when the record still resolves
  * (`resolveActivityEntity`), never a bare label pretending to be clickable.
  */
-export function ActivityLedger({ project, activity, hasActiveFilters }: ActivityLedgerProps) {
+export async function ActivityLedger({ project, activity, hasActiveFilters }: ActivityLedgerProps) {
   if (activity.length === 0) {
     return (
       <EmptyState
@@ -42,11 +42,15 @@ export function ActivityLedger({ project, activity, hasActiveFilters }: Activity
     );
   }
 
+  const entities = await Promise.all(
+    activity.map((event) => resolveActivityEntity(project, event.entityType, event.entityId)),
+  );
+
   return (
     <div className="rounded-lg border border-subtle bg-surface p-6 shadow-sm">
       <div className="flex flex-col divide-y divide-subtle">
-        {activity.map((event) => {
-          const entity = resolveActivityEntity(project, event.entityType, event.entityId);
+        {activity.map((event, index) => {
+          const entity = entities[index];
 
           return (
             <div key={event.id} className="flex items-start justify-between gap-4 py-4 first:pt-0 last:pb-0">

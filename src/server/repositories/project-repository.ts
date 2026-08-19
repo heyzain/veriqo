@@ -1,6 +1,12 @@
 import "server-only";
 
-import { store } from "@/server/repositories/store";
+import { dbConnect } from "@/server/db/connection";
+import { FeatureModel, toFeature } from "@/server/db/models/feature.model";
+import { IssueModel, toIssue } from "@/server/db/models/issue.model";
+import { ProjectModel, toProject } from "@/server/db/models/project.model";
+import { TestCaseModel, toTestCase } from "@/server/db/models/test-case.model";
+import { TestResultModel, toTestResult } from "@/server/db/models/test-result.model";
+import { TestRunModel, toTestRun } from "@/server/db/models/test-run.model";
 import type { Feature, Issue, Project, TestCase, TestResult, TestRun } from "@/types/domain";
 
 /**
@@ -9,20 +15,24 @@ import type { Feature, Issue, Project, TestCase, TestResult, TestRun } from "@/t
  * (03-CLAUDE-RULES.md, "Project-scoped actions must verify project
  * ownership server-side").
  */
-export function listProjectsForOwner(ownerId: string): Project[] {
-  return Array.from(store.projects.values()).filter((project) => project.ownerId === ownerId);
+export async function listProjectsForOwner(ownerId: string): Promise<Project[]> {
+  await dbConnect();
+  const docs = await ProjectModel.find({ ownerId }).lean();
+  return docs.map(toProject);
 }
 
-export function findProjectForOwner(slug: string, ownerId: string): Project | null {
-  const project = Array.from(store.projects.values()).find((p) => p.slug === slug);
-  if (!project || project.ownerId !== ownerId) return null;
-  return project;
+export async function findProjectForOwner(slug: string, ownerId: string): Promise<Project | null> {
+  await dbConnect();
+  const doc = await ProjectModel.findOne({ slug }).lean();
+  if (!doc || doc.ownerId !== ownerId) return null;
+  return toProject(doc);
 }
 
-export function findProjectByIdForOwner(id: string, ownerId: string): Project | null {
-  const project = store.projects.get(id);
-  if (!project || project.ownerId !== ownerId) return null;
-  return project;
+export async function findProjectByIdForOwner(id: string, ownerId: string): Promise<Project | null> {
+  await dbConnect();
+  const doc = await ProjectModel.findOne({ id }).lean();
+  if (!doc || doc.ownerId !== ownerId) return null;
+  return toProject(doc);
 }
 
 /**
@@ -32,53 +42,85 @@ export function findProjectByIdForOwner(id: string, ownerId: string): Project | 
  * no `PublicUser` to check ownership against. The credential itself is the
  * authorization boundary; see `server/services/mcp-service.ts`.
  */
-export function findProjectBySlug(slug: string): Project | null {
-  return Array.from(store.projects.values()).find((p) => p.slug === slug) ?? null;
+export async function findProjectBySlug(slug: string): Promise<Project | null> {
+  await dbConnect();
+  const doc = await ProjectModel.findOne({ slug }).lean();
+  return doc ? toProject(doc) : null;
 }
 
-export function allSlugsAndCodes(): { slugs: Set<string>; codes: Set<string> } {
+export async function allSlugsAndCodes(): Promise<{ slugs: Set<string>; codes: Set<string> }> {
+  await dbConnect();
+  const docs = await ProjectModel.find({}, { slug: 1, publicId: 1 }).lean();
   const slugs = new Set<string>();
   const codes = new Set<string>();
-  for (const project of store.projects.values()) {
-    slugs.add(project.slug);
-    codes.add(project.publicId);
+  for (const doc of docs) {
+    slugs.add(doc.slug);
+    codes.add(doc.publicId);
   }
   return { slugs, codes };
 }
 
-export function createProject(project: Project): void {
-  store.projects.set(project.id, project);
+export async function createProject(project: Project): Promise<void> {
+  await dbConnect();
+  await ProjectModel.create(project);
 }
 
-export function updateProject(project: Project): void {
-  store.projects.set(project.id, project);
+/**
+ * Deletes a project and every record that references it — features, test
+ * cases, runs, results, issues. Used only by `account-service.deleteAccount`
+ * (account deletion cascades through every owned project); nothing else in
+ * the product permanently destroys a project — everyday removal is
+ * `toggleProjectArchivedForOwner`, which is reversible.
+ */
+export async function deleteProjectCascade(projectId: string): Promise<void> {
+  await dbConnect();
+  const runs = await TestRunModel.find({ projectId }, { id: 1 }).lean();
+  const runIds = runs.map((run) => run.id);
+
+  await Promise.all([
+    FeatureModel.deleteMany({ projectId }),
+    TestCaseModel.deleteMany({ projectId }),
+    TestRunModel.deleteMany({ projectId }),
+    runIds.length ? TestResultModel.deleteMany({ testRunId: { $in: runIds } }) : Promise.resolve(),
+    IssueModel.deleteMany({ projectId }),
+    ProjectModel.deleteOne({ id: projectId }),
+  ]);
 }
 
-export function listFeaturesForProject(projectId: string): Feature[] {
-  return Array.from(store.features.values()).filter((f) => f.projectId === projectId);
+export async function updateProject(project: Project): Promise<void> {
+  await dbConnect();
+  await ProjectModel.updateOne({ id: project.id }, { $set: project }, { upsert: true });
+}
+
+export async function listFeaturesForProject(projectId: string): Promise<Feature[]> {
+  await dbConnect();
+  const docs = await FeatureModel.find({ projectId }).lean();
+  return docs.map(toFeature);
 }
 
 /** Scoped by `projectId` so a public ID from another project can never resolve here. */
-export function findFeatureByPublicId(projectId: string, publicId: string): Feature | null {
-  return (
-    Array.from(store.features.values()).find(
-      (f) => f.projectId === projectId && f.publicId === publicId,
-    ) ?? null
-  );
+export async function findFeatureByPublicId(projectId: string, publicId: string): Promise<Feature | null> {
+  await dbConnect();
+  const doc = await FeatureModel.findOne({ projectId, publicId }).lean();
+  return doc ? toFeature(doc) : null;
 }
 
-export function findFeatureById(projectId: string, id: string): Feature | null {
-  const feature = store.features.get(id);
-  if (!feature || feature.projectId !== projectId) return null;
-  return feature;
+export async function findFeatureById(projectId: string, id: string): Promise<Feature | null> {
+  await dbConnect();
+  const doc = await FeatureModel.findOne({ id }).lean();
+  if (!doc || doc.projectId !== projectId) return null;
+  return toFeature(doc);
 }
 
-export function nextFeatureSequence(projectId: string): number {
-  return listFeaturesForProject(projectId).length + 1;
+export async function nextFeatureSequence(projectId: string): Promise<number> {
+  await dbConnect();
+  const count = await FeatureModel.countDocuments({ projectId });
+  return count + 1;
 }
 
-export function saveFeature(feature: Feature): void {
-  store.features.set(feature.id, feature);
+export async function saveFeature(feature: Feature): Promise<void> {
+  await dbConnect();
+  await FeatureModel.updateOne({ id: feature.id }, { $set: feature }, { upsert: true });
 }
 
 /**
@@ -87,154 +129,153 @@ export function saveFeature(feature: Feature): void {
  * records (00-PRODUCT.md domain relationships) survive the merge instead of
  * dangling against an archived feature.
  */
-export function reassignFeatureReferences(fromFeatureId: string, toFeatureId: string): void {
-  for (const testCase of store.testCases.values()) {
-    if (testCase.featureId === fromFeatureId) {
-      store.testCases.set(testCase.id, { ...testCase, featureId: toFeatureId });
-    }
-  }
-  for (const issue of store.issues.values()) {
-    if (issue.featureId === fromFeatureId) {
-      store.issues.set(issue.id, { ...issue, featureId: toFeatureId });
-    }
-  }
+export async function reassignFeatureReferences(fromFeatureId: string, toFeatureId: string): Promise<void> {
+  await dbConnect();
+  await Promise.all([
+    TestCaseModel.updateMany({ featureId: fromFeatureId }, { $set: { featureId: toFeatureId } }),
+    IssueModel.updateMany({ featureId: fromFeatureId }, { $set: { featureId: toFeatureId } }),
+  ]);
 }
 
-export function listTestCasesForProject(projectId: string) {
-  return Array.from(store.testCases.values()).filter((tc) => tc.projectId === projectId);
+export async function listTestCasesForProject(projectId: string): Promise<TestCase[]> {
+  await dbConnect();
+  const docs = await TestCaseModel.find({ projectId }).lean();
+  return docs.map(toTestCase);
 }
 
 /** Scoped by `projectId` so a public ID from another project can never resolve here. */
-export function findTestCaseByPublicId(projectId: string, publicId: string): TestCase | null {
-  return (
-    Array.from(store.testCases.values()).find(
-      (tc) => tc.projectId === projectId && tc.publicId === publicId,
-    ) ?? null
-  );
+export async function findTestCaseByPublicId(projectId: string, publicId: string): Promise<TestCase | null> {
+  await dbConnect();
+  const doc = await TestCaseModel.findOne({ projectId, publicId }).lean();
+  return doc ? toTestCase(doc) : null;
 }
 
-export function findTestCaseById(projectId: string, id: string): TestCase | null {
-  const testCase = store.testCases.get(id);
-  if (!testCase || testCase.projectId !== projectId) return null;
-  return testCase;
+export async function findTestCaseById(projectId: string, id: string): Promise<TestCase | null> {
+  await dbConnect();
+  const doc = await TestCaseModel.findOne({ id }).lean();
+  if (!doc || doc.projectId !== projectId) return null;
+  return toTestCase(doc);
 }
 
-export function saveTestCase(testCase: TestCase): void {
-  store.testCases.set(testCase.id, testCase);
+export async function saveTestCase(testCase: TestCase): Promise<void> {
+  await dbConnect();
+  await TestCaseModel.updateOne({ id: testCase.id }, { $set: testCase }, { upsert: true });
 }
 
 /** Every public ID already used with `prefix` in this project — the set `nextTestCasePublicId` scans for a free sequence number. */
-export function testCasePublicIdsWithPrefix(projectId: string, prefix: string): Set<string> {
-  const ids = new Set<string>();
-  for (const tc of store.testCases.values()) {
-    if (tc.projectId === projectId && tc.publicId.startsWith(`${prefix}-`)) ids.add(tc.publicId);
-  }
-  return ids;
+export async function testCasePublicIdsWithPrefix(projectId: string, prefix: string): Promise<Set<string>> {
+  await dbConnect();
+  const docs = await TestCaseModel.find(
+    { projectId, publicId: new RegExp(`^${prefix}-`) },
+    { publicId: 1 },
+  ).lean();
+  return new Set(docs.map((doc) => doc.publicId));
 }
 
-export function listTestRunsForProject(projectId: string) {
-  return Array.from(store.testRuns.values()).filter((tr) => tr.projectId === projectId);
+export async function listTestRunsForProject(projectId: string): Promise<TestRun[]> {
+  await dbConnect();
+  const docs = await TestRunModel.find({ projectId }).lean();
+  return docs.map(toTestRun);
 }
 
 /** Scoped by `projectId` so a public ID from another project can never resolve here. */
-export function findTestRunByPublicId(projectId: string, publicId: string): TestRun | null {
-  return (
-    Array.from(store.testRuns.values()).find(
-      (tr) => tr.projectId === projectId && tr.publicId === publicId,
-    ) ?? null
-  );
+export async function findTestRunByPublicId(projectId: string, publicId: string): Promise<TestRun | null> {
+  await dbConnect();
+  const doc = await TestRunModel.findOne({ projectId, publicId }).lean();
+  return doc ? toTestRun(doc) : null;
 }
 
-export function findTestRunById(projectId: string, id: string): TestRun | null {
-  const testRun = store.testRuns.get(id);
-  if (!testRun || testRun.projectId !== projectId) return null;
-  return testRun;
+export async function findTestRunById(projectId: string, id: string): Promise<TestRun | null> {
+  await dbConnect();
+  const doc = await TestRunModel.findOne({ id }).lean();
+  if (!doc || doc.projectId !== projectId) return null;
+  return toTestRun(doc);
 }
 
-export function saveTestRun(testRun: TestRun): void {
-  store.testRuns.set(testRun.id, testRun);
+export async function saveTestRun(testRun: TestRun): Promise<void> {
+  await dbConnect();
+  await TestRunModel.updateOne({ id: testRun.id }, { $set: testRun }, { upsert: true });
 }
 
 /** Every `RUN-*` public ID already used in this project — the set `nextTestRunPublicId` scans for the next sequence number. */
-export function testRunPublicIds(projectId: string): Set<string> {
-  const ids = new Set<string>();
-  for (const tr of store.testRuns.values()) {
-    if (tr.projectId === projectId) ids.add(tr.publicId);
-  }
-  return ids;
+export async function testRunPublicIds(projectId: string): Promise<Set<string>> {
+  await dbConnect();
+  const docs = await TestRunModel.find({ projectId }, { publicId: 1 }).lean();
+  return new Set(docs.map((doc) => doc.publicId));
 }
 
-export function listTestResultsForRun(testRunId: string): TestResult[] {
-  return Array.from(store.testResults.values()).filter((result) => result.testRunId === testRunId);
+export async function listTestResultsForRun(testRunId: string): Promise<TestResult[]> {
+  await dbConnect();
+  const docs = await TestResultModel.find({ testRunId }).lean();
+  return docs.map(toTestResult);
 }
 
 /** Every result across every run in the project — joins through `testRuns` since `TestResult` only carries a `testRunId`, not its own `projectId`. Backs Phase 9 analytics/release-confidence, which need results at the project level rather than one run at a time. */
-export function listTestResultsForProject(projectId: string): TestResult[] {
-  const runIds = new Set(
-    Array.from(store.testRuns.values())
-      .filter((run) => run.projectId === projectId)
-      .map((run) => run.id),
-  );
-  return Array.from(store.testResults.values()).filter((result) => runIds.has(result.testRunId));
+export async function listTestResultsForProject(projectId: string): Promise<TestResult[]> {
+  await dbConnect();
+  const runs = await TestRunModel.find({ projectId }, { id: 1 }).lean();
+  const runIds = runs.map((run) => run.id);
+  if (!runIds.length) return [];
+  const docs = await TestResultModel.find({ testRunId: { $in: runIds } }).lean();
+  return docs.map(toTestResult);
 }
 
 /** Scoped by `projectId` via the owning run — a result `id` from another project can never resolve here. */
-export function findTestResultById(projectId: string, id: string): TestResult | null {
-  const result = store.testResults.get(id);
-  if (!result) return null;
-  const testRun = store.testRuns.get(result.testRunId);
-  if (!testRun || testRun.projectId !== projectId) return null;
-  return result;
+export async function findTestResultById(projectId: string, id: string): Promise<TestResult | null> {
+  await dbConnect();
+  const doc = await TestResultModel.findOne({ id }).lean();
+  if (!doc) return null;
+  const run = await TestRunModel.findOne({ id: doc.testRunId }, { projectId: 1 }).lean();
+  if (!run || run.projectId !== projectId) return null;
+  return toTestResult(doc);
 }
 
-export function findTestResult(testRunId: string, testCaseId: string): TestResult | null {
-  return (
-    Array.from(store.testResults.values()).find(
-      (result) => result.testRunId === testRunId && result.testCaseId === testCaseId,
-    ) ?? null
-  );
+export async function findTestResult(testRunId: string, testCaseId: string): Promise<TestResult | null> {
+  await dbConnect();
+  const doc = await TestResultModel.findOne({ testRunId, testCaseId }).lean();
+  return doc ? toTestResult(doc) : null;
 }
 
-export function saveTestResult(result: TestResult): void {
-  store.testResults.set(result.id, result);
+export async function saveTestResult(result: TestResult): Promise<void> {
+  await dbConnect();
+  await TestResultModel.updateOne({ id: result.id }, { $set: result }, { upsert: true });
 }
 
-export function listIssuesForProject(projectId: string) {
-  return Array.from(store.issues.values()).filter((iss) => iss.projectId === projectId);
+export async function listIssuesForProject(projectId: string): Promise<Issue[]> {
+  await dbConnect();
+  const docs = await IssueModel.find({ projectId }).lean();
+  return docs.map(toIssue);
 }
 
 /** Scoped by `projectId` so a public ID from another project can never resolve here. */
-export function findIssueByPublicId(projectId: string, publicId: string): Issue | null {
-  return (
-    Array.from(store.issues.values()).find((iss) => iss.projectId === projectId && iss.publicId === publicId) ?? null
-  );
+export async function findIssueByPublicId(projectId: string, publicId: string): Promise<Issue | null> {
+  await dbConnect();
+  const doc = await IssueModel.findOne({ projectId, publicId }).lean();
+  return doc ? toIssue(doc) : null;
 }
 
-export function findIssueById(projectId: string, id: string): Issue | null {
-  const issue = store.issues.get(id);
-  if (!issue || issue.projectId !== projectId) return null;
-  return issue;
+export async function findIssueById(projectId: string, id: string): Promise<Issue | null> {
+  await dbConnect();
+  const doc = await IssueModel.findOne({ id }).lean();
+  if (!doc || doc.projectId !== projectId) return null;
+  return toIssue(doc);
 }
 
 /** The issue already tracking a given failed result, if any — used to avoid creating a duplicate issue for the same failure. */
-export function findIssueByOriginResultId(projectId: string, originResultId: string): Issue | null {
-  return (
-    Array.from(store.issues.values()).find(
-      (iss) => iss.projectId === projectId && iss.originResultId === originResultId,
-    ) ?? null
-  );
+export async function findIssueByOriginResultId(projectId: string, originResultId: string): Promise<Issue | null> {
+  await dbConnect();
+  const doc = await IssueModel.findOne({ projectId, originResultId }).lean();
+  return doc ? toIssue(doc) : null;
 }
 
-export function saveIssue(issue: Issue): void {
-  store.issues.set(issue.id, issue);
+export async function saveIssue(issue: Issue): Promise<void> {
+  await dbConnect();
+  await IssueModel.updateOne({ id: issue.id }, { $set: issue }, { upsert: true });
 }
 
 /** Every `ISS-*` public ID already used in this project — the set `nextIssuePublicId` scans for the next sequence number. */
-export function issuePublicIds(projectId: string): Set<string> {
-  const ids = new Set<string>();
-  for (const issue of store.issues.values()) {
-    if (issue.projectId === projectId) ids.add(issue.publicId);
-  }
-  return ids;
+export async function issuePublicIds(projectId: string): Promise<Set<string>> {
+  await dbConnect();
+  const docs = await IssueModel.find({ projectId }, { publicId: 1 }).lean();
+  return new Set(docs.map((doc) => doc.publicId));
 }
-

@@ -24,6 +24,6 @@ export async function POST(
     return NextResponse.json({ ok: false, error: "Request body must be valid JSON." }, { status: 400 });
   }
 
-  const result = handleMcpRequest(slug, request.headers.get("authorization"), body);
+  const result = await handleMcpRequest(slug, request.headers.get("authorization"), body);
   return NextResponse.json(result.body, { status: result.httpStatus });
 }

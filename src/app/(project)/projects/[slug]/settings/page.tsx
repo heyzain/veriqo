@@ -11,7 +11,7 @@ export async function generateMetadata({
   params: Promise<{ slug: string }>;
 }): Promise<Metadata> {
   const [user, { slug }] = await Promise.all([getCurrentUser(), params]);
-  const project = user ? getProjectForOwner(slug, user) : null;
+  const project = user ? await getProjectForOwner(slug, user) : null;
   return { title: project ? `${project.name} · Settings` : "Project Settings" };
 }
 
@@ -24,7 +24,7 @@ export default async function ProjectSettingsPage({
   if (!user) redirect("/sign-in");
 
   const { slug } = await params;
-  const project = getProjectForOwner(slug, user);
+  const project = await getProjectForOwner(slug, user);
   if (!project) notFound();
 
   return (

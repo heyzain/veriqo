@@ -59,12 +59,17 @@ function normalizeName(name: string): string {
  * existing, non-archived feature's normalized name (Phase 4 acceptance:
  * "Duplicate/conflicting features are surfaced").
  */
-function findPossibleDuplicate(projectId: string, name: string, excludeFeatureId?: string): Feature | null {
+async function findPossibleDuplicate(
+  projectId: string,
+  name: string,
+  excludeFeatureId?: string,
+): Promise<Feature | null> {
   const normalized = normalizeName(name);
   if (!normalized) return null;
 
+  const features = await repoListFeaturesForProject(projectId);
   return (
-    repoListFeaturesForProject(projectId).find((f) => {
+    features.find((f) => {
       if (f.id === excludeFeatureId || f.status === "archived") return false;
       const candidate = normalizeName(f.name);
       return candidate === normalized || candidate.includes(normalized) || normalized.includes(candidate);
@@ -98,15 +103,15 @@ function dedupeSourceReferences(
   return result;
 }
 
-function featureActivity(
+async function featureActivity(
   projectId: string,
   actorType: ActivityEvent["actorType"],
   actorName: string,
   action: string,
   entityId: string,
   extra?: Partial<Pick<ActivityEvent, "relatedEntities" | "metadata">>,
-): void {
-  recordActivity({
+): Promise<void> {
+  await recordActivity({
     id: randomUUID(),
     projectId,
     actorType,
@@ -119,7 +124,7 @@ function featureActivity(
   });
 }
 
-export function listFeaturesForProject(project: Project): Feature[] {
+export async function listFeaturesForProject(project: Project): Promise<Feature[]> {
   return repoListFeaturesForProject(project.id);
 }
 
@@ -133,11 +138,17 @@ export type FeatureDetail = {
   activity: ActivityEvent[];
 };
 
-export function getFeatureDetail(project: Project, publicId: string): FeatureDetail | null {
-  const feature = findFeatureByPublicId(project.id, publicId);
+export async function getFeatureDetail(project: Project, publicId: string): Promise<FeatureDetail | null> {
+  const feature = await findFeatureByPublicId(project.id, publicId);
   if (!feature) return null;
 
-  const allFeatures = repoListFeaturesForProject(project.id);
+  const [allFeatures, testCases, issues, activity] = await Promise.all([
+    repoListFeaturesForProject(project.id),
+    listTestCasesForProject(project.id),
+    listIssuesForProject(project.id),
+    listActivityForProject(project.id),
+  ]);
+
   const duplicateOf = feature.possibleDuplicateOfId
     ? (allFeatures.find((f) => f.id === feature.possibleDuplicateOfId) ?? null)
     : null;
@@ -151,9 +162,9 @@ export function getFeatureDetail(project: Project, publicId: string): FeatureDet
     duplicateOf,
     dependencyFeatures,
     dependents,
-    testCases: listTestCasesForProject(project.id).filter((tc) => tc.featureId === feature.id),
-    issues: listIssuesForProject(project.id).filter((issue) => issue.featureId === feature.id),
-    activity: listActivityForProject(project.id).filter(
+    testCases: testCases.filter((tc) => tc.featureId === feature.id),
+    issues: issues.filter((issue) => issue.featureId === feature.id),
+    activity: activity.filter(
       (event) =>
         event.entityType === "feature" &&
         (event.entityId === feature.id ||
@@ -175,18 +186,17 @@ export type FeatureDiscoveryInput = {
   idempotencyKey?: string;
 };
 
-export function createFeatureFromDiscovery(
+export async function createFeatureFromDiscovery(
   project: Project,
   input: FeatureDiscoveryInput,
-): FeatureServiceResult<{ feature: Feature; project: Project }> {
+): Promise<FeatureServiceResult<{ feature: Feature; project: Project }>> {
+  const allFeatures = await repoListFeaturesForProject(project.id);
+
   if (input.idempotencyKey) {
-    const replay = repoListFeaturesForProject(project.id).find(
-      (f) => f.idempotencyKey === input.idempotencyKey,
-    );
+    const replay = allFeatures.find((f) => f.idempotencyKey === input.idempotencyKey);
     if (replay) return ok({ feature: replay, project });
   }
 
-  const allFeatures = repoListFeaturesForProject(project.id);
   const invalidDependency = input.dependencies.find(
     (dep) => !allFeatures.some((f) => f.publicId === dep),
   );
@@ -194,12 +204,12 @@ export function createFeatureFromDiscovery(
     return fail(`Unknown dependency "${invalidDependency}" — it must be an existing feature's public ID.`);
   }
 
-  const duplicate = findPossibleDuplicate(project.id, input.name);
+  const duplicate = await findPossibleDuplicate(project.id, input.name);
   const now = new Date().toISOString();
 
   const feature: Feature = {
     id: randomUUID(),
-    publicId: formatPublicId("FEAT", nextFeatureSequence(project.id)),
+    publicId: formatPublicId("FEAT", await nextFeatureSequence(project.id)),
     projectId: project.id,
     name: input.name.trim(),
     description: input.description.trim(),
@@ -217,11 +227,11 @@ export function createFeatureFromDiscovery(
     createdAt: now,
     updatedAt: now,
   };
-  saveFeature(feature);
+  await saveFeature(feature);
 
-  const updatedProject = advanceSetupStep(project, 3);
+  const updatedProject = await advanceSetupStep(project, 3);
 
-  featureActivity(
+  await featureActivity(
     project.id,
     "claude",
     "Claude",
@@ -236,7 +246,7 @@ export function createFeatureFromDiscovery(
   );
 
   if (updatedProject !== project) {
-    featureActivity(
+    await featureActivity(
       project.id,
       "system",
       "Veriqo",
@@ -258,19 +268,19 @@ export type FeatureUpdateInput = Partial<{
   sourceReferences: FeatureSourceReference[];
 }>;
 
-export function updateFeatureFromDiscovery(
+export async function updateFeatureFromDiscovery(
   project: Project,
   publicId: string,
   input: FeatureUpdateInput,
-): FeatureServiceResult<{ feature: Feature; project: Project }> {
-  const existing = findFeatureByPublicId(project.id, publicId);
+): Promise<FeatureServiceResult<{ feature: Feature; project: Project }>> {
+  const existing = await findFeatureByPublicId(project.id, publicId);
   if (!existing) return fail(`No feature with public ID "${publicId}" in this project.`);
   if (existing.status === "archived") {
     return fail(`${publicId} is archived. Restore it before updating.`);
   }
 
   if (input.dependencies) {
-    const allFeatures = repoListFeaturesForProject(project.id);
+    const allFeatures = await repoListFeaturesForProject(project.id);
     const invalidDependency = input.dependencies.find(
       (dep) => dep !== publicId && !allFeatures.some((f) => f.publicId === dep),
     );
@@ -309,11 +319,11 @@ export function updateFeatureFromDiscovery(
     promptVersion: featureDiscoveryPrompt.version,
     updatedAt: now,
   };
-  saveFeature(updated);
+  await saveFeature(updated);
 
-  const updatedProject = advanceSetupStep(project, 3);
+  const updatedProject = await advanceSetupStep(project, 3);
 
-  featureActivity(
+  await featureActivity(
     project.id,
     "claude",
     "Claude",
@@ -328,29 +338,29 @@ export function updateFeatureFromDiscovery(
   // feature moving to `changed` cascades its already-`ready` test cases to
   // `needsUpdate` rather than leaving stale coverage silently marked ready.
   if (wasApproved) {
-    markTestCasesNeedsUpdateForFeatureChange(updatedProject, updated.id, updated.publicId);
+    await markTestCasesNeedsUpdateForFeatureChange(updatedProject, updated.id, updated.publicId);
   }
 
   return ok({ feature: updated, project: updatedProject });
 }
 
-export function listFeaturesForMcp(project: Project, status?: FeatureStatus): Feature[] {
-  const all = repoListFeaturesForProject(project.id);
+export async function listFeaturesForMcp(project: Project, status?: FeatureStatus): Promise<Feature[]> {
+  const all = await repoListFeaturesForProject(project.id);
   return status ? all.filter((f) => f.status === status) : all;
 }
 
 // ---- Human review actions ----
 
-function recomputeReviewStep(project: Project): Project {
-  const features = repoListFeaturesForProject(project.id);
+async function recomputeReviewStep(project: Project): Promise<Project> {
+  const features = await repoListFeaturesForProject(project.id);
   const allReviewed =
     features.length > 0 && features.every((f) => f.status === "approved" || f.status === "archived");
   return allReviewed ? advanceSetupStep(project, 4) : project;
 }
 
-function maybeLogReviewComplete(project: Project, updatedProject: Project): void {
+async function maybeLogReviewComplete(project: Project, updatedProject: Project): Promise<void> {
   if (updatedProject === project) return;
-  featureActivity(
+  await featureActivity(
     project.id,
     "system",
     "Veriqo",
@@ -359,12 +369,12 @@ function maybeLogReviewComplete(project: Project, updatedProject: Project): void
   );
 }
 
-export function approveFeature(
+export async function approveFeature(
   project: Project,
   publicId: string,
   actorName: string,
-): FeatureServiceResult<{ feature: Feature; project: Project }> {
-  const existing = findFeatureByPublicId(project.id, publicId);
+): Promise<FeatureServiceResult<{ feature: Feature; project: Project }>> {
+  const existing = await findFeatureByPublicId(project.id, publicId);
   if (!existing) return fail("Feature not found.");
   if (existing.status === "approved") return ok({ feature: existing, project });
   if (existing.status === "archived") return fail(`${publicId} is archived. Restore it before approving.`);
@@ -381,26 +391,26 @@ export function approveFeature(
     possibleDuplicateOfId: undefined,
     updatedAt: now,
   };
-  saveFeature(updated);
+  await saveFeature(updated);
 
-  featureActivity(project.id, "human", actorName, `approved ${updated.publicId} — ${updated.name}`, updated.id);
+  await featureActivity(project.id, "human", actorName, `approved ${updated.publicId} — ${updated.name}`, updated.id);
 
-  const updatedProject = recomputeReviewStep(project);
-  maybeLogReviewComplete(project, updatedProject);
+  const updatedProject = await recomputeReviewStep(project);
+  await maybeLogReviewComplete(project, updatedProject);
 
   return ok({ feature: updated, project: updatedProject });
 }
 
-export function bulkApproveFeatures(
+export async function bulkApproveFeatures(
   project: Project,
   publicIds: readonly string[],
   actorName: string,
-): FeatureServiceResult<{ project: Project; approvedCount: number }> {
+): Promise<FeatureServiceResult<{ project: Project; approvedCount: number }>> {
   const now = new Date().toISOString();
   const approved: Feature[] = [];
 
   for (const publicId of publicIds) {
-    const existing = findFeatureByPublicId(project.id, publicId);
+    const existing = await findFeatureByPublicId(project.id, publicId);
     if (!existing || existing.status === "approved" || existing.status === "archived") continue;
     const updated: Feature = {
       ...existing,
@@ -409,13 +419,13 @@ export function bulkApproveFeatures(
       possibleDuplicateOfId: undefined,
       updatedAt: now,
     };
-    saveFeature(updated);
+    await saveFeature(updated);
     approved.push(updated);
   }
 
   if (approved.length === 0) return ok({ project, approvedCount: 0 });
 
-  featureActivity(
+  await featureActivity(
     project.id,
     "human",
     actorName,
@@ -423,8 +433,8 @@ export function bulkApproveFeatures(
     project.id,
   );
 
-  const updatedProject = recomputeReviewStep(project);
-  maybeLogReviewComplete(project, updatedProject);
+  const updatedProject = await recomputeReviewStep(project);
+  await maybeLogReviewComplete(project, updatedProject);
 
   return ok({ project: updatedProject, approvedCount: approved.length });
 }
@@ -438,17 +448,17 @@ export type FeatureEditInput = {
   dependencies: string[];
 };
 
-export function editFeature(
+export async function editFeature(
   project: Project,
   publicId: string,
   input: FeatureEditInput,
   actorName: string,
-): FeatureServiceResult<{ feature: Feature }> {
-  const existing = findFeatureByPublicId(project.id, publicId);
+): Promise<FeatureServiceResult<{ feature: Feature }>> {
+  const existing = await findFeatureByPublicId(project.id, publicId);
   if (!existing) return fail("Feature not found.");
   if (existing.status === "archived") return fail(`${publicId} is archived. Restore it before editing.`);
 
-  const allFeatures = repoListFeaturesForProject(project.id);
+  const allFeatures = await repoListFeaturesForProject(project.id);
   const invalidDependency = input.dependencies.find(
     (dep) => dep !== publicId && !allFeatures.some((f) => f.publicId === dep),
   );
@@ -473,53 +483,53 @@ export function editFeature(
     possibleDuplicateOfId: undefined,
     updatedAt: now,
   };
-  saveFeature(updated);
+  await saveFeature(updated);
 
-  featureActivity(project.id, "human", actorName, `edited ${updated.publicId} — ${updated.name}`, updated.id);
+  await featureActivity(project.id, "human", actorName, `edited ${updated.publicId} — ${updated.name}`, updated.id);
 
   return ok({ feature: updated });
 }
 
-export function archiveFeature(
+export async function archiveFeature(
   project: Project,
   publicId: string,
   actorName: string,
-): FeatureServiceResult<{ feature: Feature; project: Project }> {
-  const existing = findFeatureByPublicId(project.id, publicId);
+): Promise<FeatureServiceResult<{ feature: Feature; project: Project }>> {
+  const existing = await findFeatureByPublicId(project.id, publicId);
   if (!existing) return fail("Feature not found.");
   if (existing.status === "archived") return ok({ feature: existing, project });
 
   const now = new Date().toISOString();
   const updated: Feature = { ...existing, status: "archived", updatedAt: now };
-  saveFeature(updated);
+  await saveFeature(updated);
 
-  featureActivity(project.id, "human", actorName, `archived ${updated.publicId} — ${updated.name}`, updated.id);
+  await featureActivity(project.id, "human", actorName, `archived ${updated.publicId} — ${updated.name}`, updated.id);
 
-  const updatedProject = recomputeReviewStep(project);
-  maybeLogReviewComplete(project, updatedProject);
+  const updatedProject = await recomputeReviewStep(project);
+  await maybeLogReviewComplete(project, updatedProject);
 
   return ok({ feature: updated, project: updatedProject });
 }
 
-export function bulkArchiveFeatures(
+export async function bulkArchiveFeatures(
   project: Project,
   publicIds: readonly string[],
   actorName: string,
-): FeatureServiceResult<{ project: Project; archivedCount: number }> {
+): Promise<FeatureServiceResult<{ project: Project; archivedCount: number }>> {
   const now = new Date().toISOString();
   const archived: Feature[] = [];
 
   for (const publicId of publicIds) {
-    const existing = findFeatureByPublicId(project.id, publicId);
+    const existing = await findFeatureByPublicId(project.id, publicId);
     if (!existing || existing.status === "archived") continue;
     const updated: Feature = { ...existing, status: "archived", updatedAt: now };
-    saveFeature(updated);
+    await saveFeature(updated);
     archived.push(updated);
   }
 
   if (archived.length === 0) return ok({ project, archivedCount: 0 });
 
-  featureActivity(
+  await featureActivity(
     project.id,
     "human",
     actorName,
@@ -527,26 +537,26 @@ export function bulkArchiveFeatures(
     project.id,
   );
 
-  const updatedProject = recomputeReviewStep(project);
-  maybeLogReviewComplete(project, updatedProject);
+  const updatedProject = await recomputeReviewStep(project);
+  await maybeLogReviewComplete(project, updatedProject);
 
   return ok({ project: updatedProject, archivedCount: archived.length });
 }
 
-export function restoreFeature(
+export async function restoreFeature(
   project: Project,
   publicId: string,
   actorName: string,
-): FeatureServiceResult<{ feature: Feature }> {
-  const existing = findFeatureByPublicId(project.id, publicId);
+): Promise<FeatureServiceResult<{ feature: Feature }>> {
+  const existing = await findFeatureByPublicId(project.id, publicId);
   if (!existing) return fail("Feature not found.");
   if (existing.status !== "archived") return ok({ feature: existing });
 
   const now = new Date().toISOString();
   const updated: Feature = { ...existing, status: "draft", updatedAt: now };
-  saveFeature(updated);
+  await saveFeature(updated);
 
-  featureActivity(project.id, "human", actorName, `restored ${updated.publicId} from archive`, updated.id);
+  await featureActivity(project.id, "human", actorName, `restored ${updated.publicId} from archive`, updated.id);
 
   return ok({ feature: updated });
 }
@@ -559,18 +569,18 @@ export type MergeFeaturesResult = { survivor: Feature; archived: Feature };
  * feature (so nothing dangles), and archives the merged feature with a note
  * pointing at its survivor.
  */
-export function mergeFeatures(
+export async function mergeFeatures(
   project: Project,
   survivorPublicId: string,
   mergedPublicId: string,
   actorName: string,
-): FeatureServiceResult<MergeFeaturesResult> {
+): Promise<FeatureServiceResult<MergeFeaturesResult>> {
   if (survivorPublicId === mergedPublicId) {
     return fail("Choose two different features to merge.");
   }
 
-  const survivor = findFeatureByPublicId(project.id, survivorPublicId);
-  const merged = findFeatureByPublicId(project.id, mergedPublicId);
+  const survivor = await findFeatureByPublicId(project.id, survivorPublicId);
+  const merged = await findFeatureByPublicId(project.id, mergedPublicId);
   if (!survivor || !merged) return fail("One of the selected features could not be found.");
   if (survivor.status === "archived" || merged.status === "archived") {
     return fail("Archived features can't be merged.");
@@ -589,7 +599,7 @@ export function mergeFeatures(
     possibleDuplicateOfId: undefined,
     updatedAt: now,
   };
-  saveFeature(mergedSurvivor);
+  await saveFeature(mergedSurvivor);
 
   const archivedMerged: Feature = {
     ...merged,
@@ -597,11 +607,11 @@ export function mergeFeatures(
     possibleDuplicateOfId: undefined,
     updatedAt: now,
   };
-  saveFeature(archivedMerged);
+  await saveFeature(archivedMerged);
 
-  reassignFeatureReferences(merged.id, survivor.id);
+  await reassignFeatureReferences(merged.id, survivor.id);
 
-  featureActivity(
+  await featureActivity(
     project.id,
     "human",
     actorName,
@@ -614,10 +624,14 @@ export function mergeFeatures(
 }
 
 /** Just an audit trail entry — the actual regeneration happens when Claude calls `update_feature`. */
-export function logFeatureRegenerationRequested(project: Project, publicId: string, actorName: string): void {
-  const feature = findFeatureByPublicId(project.id, publicId);
+export async function logFeatureRegenerationRequested(
+  project: Project,
+  publicId: string,
+  actorName: string,
+): Promise<void> {
+  const feature = await findFeatureByPublicId(project.id, publicId);
   if (!feature) return;
-  featureActivity(
+  await featureActivity(
     project.id,
     "human",
     actorName,
@@ -633,12 +647,13 @@ export type FeatureDiscoveryActivitySince = {
   newFeatureCount: number;
 };
 
-export function getFeatureDiscoveryActivitySince(
+export async function getFeatureDiscoveryActivitySince(
   project: Project,
   sinceIso: string,
-): FeatureDiscoveryActivitySince {
+): Promise<FeatureDiscoveryActivitySince> {
   const since = new Date(sinceIso).getTime();
-  const events = listActivityForProject(project.id)
+  const allActivity = await listActivityForProject(project.id);
+  const events = allActivity
     .filter((event) => event.entityType === "feature" && new Date(event.createdAt).getTime() > since)
     .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())
     .slice(-20);

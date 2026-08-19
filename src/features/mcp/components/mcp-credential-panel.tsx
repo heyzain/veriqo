@@ -5,7 +5,6 @@ import { useRouter } from "next/navigation";
 
 import {
   AlertDialog,
-  AlertDialogAction,
   AlertDialogCancel,
   AlertDialogContent,
   AlertDialogFooter,
@@ -133,13 +132,19 @@ export function McpCredentialPanel({ projectSlug, credential }: McpCredentialPan
                     <AlertDialogCancel asChild>
                       <Button intent="secondary">Cancel</Button>
                     </AlertDialogCancel>
+                    {/* Not `AlertDialogAction asChild`: that wraps Radix's
+                        own close-on-click handler around this button, which
+                        races the dialog's unmount against this form's
+                        Server Action submission and can drop the submission
+                        entirely. A plain submit button (matching
+                        `DeleteAccountDialog`) lets the action complete and
+                        the dialog closes naturally when its content goes
+                        away on success. */}
                     <form action={formAction}>
                       <input type="hidden" name="projectSlug" value={projectSlug} />
-                      <AlertDialogAction asChild>
-                        <Button intent="danger" type="submit" disabled={isPending}>
-                          {isPending ? "Regenerating…" : "Regenerate"}
-                        </Button>
-                      </AlertDialogAction>
+                      <Button intent="danger" type="submit" disabled={isPending}>
+                        {isPending ? "Regenerating…" : "Regenerate"}
+                      </Button>
                     </form>
                   </AlertDialogFooter>
                 </AlertDialogContent>
@@ -194,13 +199,13 @@ export function McpCredentialPanel({ projectSlug, credential }: McpCredentialPan
                   <AlertDialogCancel asChild>
                     <Button intent="secondary">Cancel</Button>
                   </AlertDialogCancel>
+                  {/* See the matching comment above the Regenerate form:
+                      not `AlertDialogAction asChild` for the same reason. */}
                   <form action={revokeMcpCredentialAction}>
                     <input type="hidden" name="projectSlug" value={projectSlug} />
-                    <AlertDialogAction asChild>
-                      <Button intent="danger" type="submit">
-                        Revoke credential
-                      </Button>
-                    </AlertDialogAction>
+                    <Button intent="danger" type="submit">
+                      Revoke credential
+                    </Button>
                   </form>
                 </AlertDialogFooter>
               </AlertDialogContent>

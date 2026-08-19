@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from "vitest";
 
-import { store } from "@/server/repositories/store";
+import { resetTestDb } from "@/test/db";
 import { __resetCookieJarForTests } from "@/test/mocks/next-headers";
 
 import {
@@ -12,18 +12,10 @@ import {
   signUp,
 } from "./auth-service";
 
-function resetStore() {
-  store.users.clear();
-  store.usersByEmail.clear();
-  store.tokens.clear();
-  store.invites.clear();
-  store.projects.clear();
-  store.activity.length = 0;
-  store.seeded = true; // Skip demo seeding — these tests own their own fixtures.
+beforeEach(async () => {
+  await resetTestDb();
   __resetCookieJarForTests();
-}
-
-beforeEach(resetStore);
+});
 
 describe("auth-service — sign up", () => {
   it("rejects a duplicate email", async () => {

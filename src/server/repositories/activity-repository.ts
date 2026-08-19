@@ -1,6 +1,7 @@
 import "server-only";
 
-import { store } from "@/server/repositories/store";
+import { dbConnect } from "@/server/db/connection";
+import { ActivityModel, toActivityEvent } from "@/server/db/models/activity.model";
 import type { ActivityEvent } from "@/types/domain";
 
 /**
@@ -9,12 +10,32 @@ import type { ActivityEvent } from "@/types/domain";
  * this exists so account/project actions still honor the product invariant
  * "every important action creates an activity event" from day one.
  */
-export function recordActivity(event: ActivityEvent): void {
-  store.activity.push(event);
+export async function recordActivity(event: ActivityEvent): Promise<void> {
+  await dbConnect();
+  await ActivityModel.create({
+    id: event.id,
+    projectId: event.projectId,
+    actorType: event.actorType,
+    actorName: event.actorName,
+    action: event.action,
+    entityType: event.entityType,
+    entityId: event.entityId,
+    relatedEntities: event.relatedEntities
+      ? event.relatedEntities.map((related) => ({ type: related.type, id: related.id }))
+      : undefined,
+    metadata: event.metadata,
+    createdAt: event.createdAt,
+  });
 }
 
-export function listActivityForProject(projectId: string): ActivityEvent[] {
-  return store.activity
-    .filter((event) => event.projectId === projectId)
-    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+export async function listActivityForProject(projectId: string): Promise<ActivityEvent[]> {
+  await dbConnect();
+  const docs = await ActivityModel.find({ projectId }).sort({ createdAt: -1 }).lean();
+  return docs.map(toActivityEvent);
+}
+
+/** Part of `account-service.deleteAccount`'s cascade — removes every event for one project. */
+export async function deleteActivityForProject(projectId: string): Promise<void> {
+  await dbConnect();
+  await ActivityModel.deleteMany({ projectId });
 }

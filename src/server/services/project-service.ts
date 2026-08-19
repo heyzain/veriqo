@@ -20,12 +20,12 @@ import { ensureSeeded } from "@/server/repositories/seed";
 import type { Project, ProjectEnvironment } from "@/types/domain";
 import type { PublicUser } from "@/types/auth";
 
-export function listProjects(owner: PublicUser): {
+export async function listProjects(owner: PublicUser): Promise<{
   active: Project[];
   archived: Project[];
-} {
-  ensureSeeded();
-  const projects = listProjectsForOwner(owner.id).sort(
+}> {
+  await ensureSeeded();
+  const projects = (await listProjectsForOwner(owner.id)).sort(
     (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
   );
   return {
@@ -41,13 +41,13 @@ export function listProjects(owner: PublicUser): {
  * "exists but belongs to someone else" so the caller can't distinguish the
  * two and leak which slugs are taken.
  */
-export function getProjectForOwner(slug: string, owner: PublicUser): Project | null {
-  ensureSeeded();
+export async function getProjectForOwner(slug: string, owner: PublicUser): Promise<Project | null> {
+  await ensureSeeded();
   return findProjectForOwner(slug, owner.id);
 }
 
-export function getLastActivityForProject(projectId: string) {
-  return listActivityForProject(projectId)[0];
+export async function getLastActivityForProject(projectId: string) {
+  return (await listActivityForProject(projectId))[0];
 }
 
 export type CreateProjectInput = {
@@ -58,9 +58,9 @@ export type CreateProjectInput = {
   repository?: string;
 };
 
-export function createProjectForOwner(input: CreateProjectInput, owner: PublicUser): Project {
-  ensureSeeded();
-  const { slugs, codes } = allSlugsAndCodes();
+export async function createProjectForOwner(input: CreateProjectInput, owner: PublicUser): Promise<Project> {
+  await ensureSeeded();
+  const { slugs, codes } = await allSlugsAndCodes();
 
   const project: Project = {
     id: randomUUID(),
@@ -77,8 +77,8 @@ export function createProjectForOwner(input: CreateProjectInput, owner: PublicUs
     createdAt: new Date().toISOString(),
   };
 
-  createProject(project);
-  recordActivity({
+  await createProject(project);
+  await recordActivity({
     id: randomUUID(),
     projectId: project.id,
     actorType: "human",
@@ -104,16 +104,18 @@ export type ProjectSummary = {
   lastActivity: import("@/types/domain").ActivityEvent | undefined;
 };
 
-export function getProjectSummary(slug: string, owner: PublicUser): ProjectSummary | null {
-  ensureSeeded();
-  const project = findProjectForOwner(slug, owner.id);
+export async function getProjectSummary(slug: string, owner: PublicUser): Promise<ProjectSummary | null> {
+  await ensureSeeded();
+  const project = await findProjectForOwner(slug, owner.id);
   if (!project) return null;
 
-  const features = listFeaturesForProject(project.id);
-  const testCases = listTestCasesForProject(project.id);
-  const testRuns = listTestRunsForProject(project.id);
-  const issues = listIssuesForProject(project.id);
-  const activity = listActivityForProject(project.id);
+  const [features, testCases, testRuns, issues, activity] = await Promise.all([
+    listFeaturesForProject(project.id),
+    listTestCasesForProject(project.id),
+    listTestRunsForProject(project.id),
+    listIssuesForProject(project.id),
+    listActivityForProject(project.id),
+  ]);
 
   return {
     project,
@@ -139,20 +141,21 @@ export type ProjectRecords = {
   activity: import("@/types/domain").ActivityEvent[];
 };
 
-export function getProjectRecords(slug: string, owner: PublicUser): ProjectRecords | null {
-  ensureSeeded();
-  const project = findProjectForOwner(slug, owner.id);
+export async function getProjectRecords(slug: string, owner: PublicUser): Promise<ProjectRecords | null> {
+  await ensureSeeded();
+  const project = await findProjectForOwner(slug, owner.id);
   if (!project) return null;
 
-  return {
-    project,
-    features: listFeaturesForProject(project.id),
-    testCases: listTestCasesForProject(project.id),
-    testRuns: listTestRunsForProject(project.id),
-    testResults: listTestResultsForProject(project.id),
-    issues: listIssuesForProject(project.id),
-    activity: listActivityForProject(project.id),
-  };
+  const [features, testCases, testRuns, testResults, issues, activity] = await Promise.all([
+    listFeaturesForProject(project.id),
+    listTestCasesForProject(project.id),
+    listTestRunsForProject(project.id),
+    listTestResultsForProject(project.id),
+    listIssuesForProject(project.id),
+    listActivityForProject(project.id),
+  ]);
+
+  return { project, features, testCases, testRuns, testResults, issues, activity };
 }
 
 export type UpdateProjectInput = {
@@ -163,13 +166,13 @@ export type UpdateProjectInput = {
   repository?: string;
 };
 
-export function updateProjectForOwner(
+export async function updateProjectForOwner(
   slug: string,
   input: UpdateProjectInput,
   owner: PublicUser,
-): Project | null {
-  ensureSeeded();
-  const project = findProjectForOwner(slug, owner.id);
+): Promise<Project | null> {
+  await ensureSeeded();
+  const project = await findProjectForOwner(slug, owner.id);
   if (!project) return null;
 
   const updated: Project = {
@@ -181,9 +184,9 @@ export function updateProjectForOwner(
     repository: input.repository?.trim() || undefined,
   };
 
-  updateProject(updated);
+  await updateProject(updated);
 
-  recordActivity({
+  await recordActivity({
     id: randomUUID(),
     projectId: project.id,
     actorType: "human",
@@ -206,16 +209,16 @@ export function updateProjectForOwner(
  * place. Returns the project unchanged when nothing moved, so callers can
  * compare by reference to decide whether to log a "step complete" event.
  */
-export function advanceSetupStep(project: Project, step: number): Project {
+export async function advanceSetupStep(project: Project, step: number): Promise<Project> {
   if (project.setupStepsCompleted >= step) return project;
   const updated: Project = { ...project, setupStepsCompleted: step };
-  updateProject(updated);
+  await updateProject(updated);
   return updated;
 }
 
-export function toggleProjectArchivedForOwner(slug: string, owner: PublicUser): Project | null {
-  ensureSeeded();
-  const project = findProjectForOwner(slug, owner.id);
+export async function toggleProjectArchivedForOwner(slug: string, owner: PublicUser): Promise<Project | null> {
+  await ensureSeeded();
+  const project = await findProjectForOwner(slug, owner.id);
   if (!project) return null;
 
   const updated: Project = {
@@ -223,9 +226,9 @@ export function toggleProjectArchivedForOwner(slug: string, owner: PublicUser): 
     archived: !project.archived,
   };
 
-  updateProject(updated);
+  await updateProject(updated);
 
-  recordActivity({
+  await recordActivity({
     id: randomUUID(),
     projectId: project.id,
     actorType: "human",
@@ -238,4 +241,3 @@ export function toggleProjectArchivedForOwner(slug: string, owner: PublicUser): 
 
   return updated;
 }
-

@@ -33,7 +33,7 @@ export async function createProjectAction(
   const parsed = createProjectSchema.safeParse(values);
   if (!parsed.success) return fieldErrorsFromZod(parsed.error, values);
 
-  const project = createProjectForOwner(
+  const project = await createProjectForOwner(
     {
       name: parsed.data.name,
       description: parsed.data.description,
@@ -70,7 +70,7 @@ export async function updateProjectAction(
   if (!parsed.success) return fieldErrorsFromZod(parsed.error, values);
 
   const { updateProjectForOwner } = await import("@/server/services/project-service");
-  const updated = updateProjectForOwner(
+  const updated = await updateProjectForOwner(
     slug,
     {
       name: parsed.data.name,
@@ -96,7 +96,7 @@ export async function toggleProjectArchivedAction(formData: FormData): Promise<v
   if (!user) redirect("/sign-in");
 
   const { toggleProjectArchivedForOwner } = await import("@/server/services/project-service");
-  const updated = toggleProjectArchivedForOwner(slug, user);
+  const updated = await toggleProjectArchivedForOwner(slug, user);
   if (!updated) redirect("/projects");
 
   redirect(`/projects/${slug}/settings`);

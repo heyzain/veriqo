@@ -13,7 +13,7 @@ export async function generateMetadata({
   params: Promise<{ slug: string }>;
 }): Promise<Metadata> {
   const [user, { slug }] = await Promise.all([getCurrentUser(), params]);
-  const records = user ? getProjectRecords(slug, user) : null;
+  const records = user ? await getProjectRecords(slug, user) : null;
   return { title: records ? `${records.project.name} · Activity` : "Activity" };
 }
 
@@ -35,7 +35,7 @@ export default async function ProjectActivityPage({
 
   const { slug } = await params;
   const query = await searchParams;
-  const records = getProjectRecords(slug, user);
+  const records = await getProjectRecords(slug, user);
   if (!records) notFound();
 
   const { project, activity } = records;

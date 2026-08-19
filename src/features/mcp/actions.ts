@@ -29,7 +29,7 @@ export async function issueMcpCredentialAction(
   const user = await getCurrentUser();
   if (!user) return formErrorState("Your session expired. Sign in again.", values);
 
-  const project = getProjectForOwner(values.projectSlug, user);
+  const project = await getProjectForOwner(values.projectSlug, user);
   if (!project) return formErrorState("Project could not be found.", values);
 
   const rateLimit = checkRateLimit(`mcp-key:${user.id}`, { limit: 10, windowMs: 10 * 60 * 1000 });
@@ -40,7 +40,7 @@ export async function issueMcpCredentialAction(
     );
   }
 
-  const { secret } = issueMcpCredential(project, user.name);
+  const { secret } = await issueMcpCredential(project, user.name);
 
   // The plaintext secret is returned to the client exactly this once, via
   // `meta` — never persisted, logged, or retrievable again after this
@@ -54,9 +54,9 @@ export async function revokeMcpCredentialAction(formData: FormData): Promise<voi
   const user = await getCurrentUser();
   if (!user) redirect("/sign-in");
 
-  const project = getProjectForOwner(projectSlug, user);
+  const project = await getProjectForOwner(projectSlug, user);
   if (!project) redirect("/projects");
 
-  revokeMcpCredential(project, user.name);
+  await revokeMcpCredential(project, user.name);
   redirect(`/projects/${projectSlug}/mcp`);
 }

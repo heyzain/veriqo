@@ -25,7 +25,7 @@ import type { IssueStatus } from "@/config/status.config";
 async function requireProject(projectSlug: string) {
   const user = await getCurrentUser();
   if (!user) redirect("/sign-in");
-  const project = getProjectForOwner(projectSlug, user);
+  const project = await getProjectForOwner(projectSlug, user);
   if (!project) redirect("/projects");
   return { user, project };
 }
@@ -48,13 +48,13 @@ export async function createIssueAction(
 
   const user = await getCurrentUser();
   if (!user) return formErrorState("Your session expired. Sign in again.", values);
-  const project = getProjectForOwner(projectSlug, user);
+  const project = await getProjectForOwner(projectSlug, user);
   if (!project) return formErrorState("Project could not be found.", values);
 
   const parsed = issueCreateFormSchema.safeParse(values);
   if (!parsed.success) return fieldErrorsFromZod(parsed.error, values);
 
-  const result = createIssueFromFailedResult(project, testRunId, testCaseId, parsed.data, user.name);
+  const result = await createIssueFromFailedResult(project, testRunId, testCaseId, parsed.data, user.name);
   if (!result.ok) return formErrorState(result.error, values);
 
   redirect(`/projects/${projectSlug}/issues/${result.data.issue.publicId}`);
@@ -69,7 +69,7 @@ export async function updateIssueStatusAction(formData: FormData): Promise<void>
   const { user, project } = await requireProject(projectSlug);
 
   if (nextStatus === "open" || nextStatus === "investigating" || nextStatus === "fixInProgress") {
-    updateIssueStatus(project, issueId, nextStatus, user.name);
+    await updateIssueStatus(project, issueId, nextStatus, user.name);
   }
   redirect(`/projects/${projectSlug}/issues/${issueId}`);
 }
@@ -79,7 +79,7 @@ export async function markIssueReadyForRetestAction(formData: FormData): Promise
   const issueId = String(formData.get("issueId") ?? "");
   const { user, project } = await requireProject(projectSlug);
 
-  markIssueReadyForRetest(project, issueId, user.name);
+  await markIssueReadyForRetest(project, issueId, user.name);
   redirect(`/projects/${projectSlug}/issues/${issueId}`);
 }
 
@@ -95,13 +95,13 @@ export async function recordIssueFixAction(
 
   const user = await getCurrentUser();
   if (!user) return formErrorState("Your session expired. Sign in again.", values);
-  const project = getProjectForOwner(projectSlug, user);
+  const project = await getProjectForOwner(projectSlug, user);
   if (!project) return formErrorState("Project could not be found.", values);
 
   const parsed = issueFixFormSchema.safeParse(values);
   if (!parsed.success) return fieldErrorsFromZod(parsed.error, values);
 
-  const result = recordIssueFix(project, issueId, parsed.data.fixNote, user.name);
+  const result = await recordIssueFix(project, issueId, parsed.data.fixNote, user.name);
   if (!result.ok) return formErrorState(result.error, values);
 
   return successState({ fixNote: result.data.issue.fixNote ?? "" });
@@ -132,13 +132,13 @@ export async function createFocusedRerunAction(
 
   const user = await getCurrentUser();
   if (!user) return formErrorState("Your session expired. Sign in again.", values);
-  const project = getProjectForOwner(projectSlug, user);
+  const project = await getProjectForOwner(projectSlug, user);
   if (!project) return formErrorState("Project could not be found.", values);
 
   const parsed = focusedRerunFormSchema.safeParse(values);
   if (!parsed.success) return fieldErrorsFromZod(parsed.error, values);
 
-  const result = createFocusedRerun(
+  const result = await createFocusedRerun(
     project,
     parseCommaIds(parsed.data.issueIds),
     {
@@ -166,7 +166,7 @@ export async function pollIssueActivityAction(
 ): Promise<IssueActivitySince | null> {
   const user = await getCurrentUser();
   if (!user) return null;
-  const project = getProjectForOwner(projectSlug, user);
+  const project = await getProjectForOwner(projectSlug, user);
   if (!project) return null;
   return getIssueActivitySince(project, issuePublicId, sinceIso);
 }

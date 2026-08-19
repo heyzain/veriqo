@@ -24,8 +24,8 @@ export async function generateMetadata({
   params: Promise<{ slug: string; featureId: string }>;
 }): Promise<Metadata> {
   const [user, { slug, featureId }] = await Promise.all([getCurrentUser(), params]);
-  const project = user ? getProjectForOwner(slug, user) : null;
-  const detail = project ? getFeatureDetail(project, featureId) : null;
+  const project = user ? await getProjectForOwner(slug, user) : null;
+  const detail = project ? await getFeatureDetail(project, featureId) : null;
   return { title: detail ? `${detail.feature.publicId} · ${detail.feature.name}` : "Feature" };
 }
 
@@ -38,14 +38,14 @@ export default async function FeatureDetailPage({
   if (!user) redirect("/sign-in");
 
   const { slug, featureId } = await params;
-  const project = getProjectForOwner(slug, user);
+  const project = await getProjectForOwner(slug, user);
   if (!project) notFound();
 
-  const detail = getFeatureDetail(project, featureId);
+  const detail = await getFeatureDetail(project, featureId);
   if (!detail) notFound();
 
   const { feature, duplicateOf, dependencyFeatures, dependents, testCases, issues, activity } = detail;
-  const allFeatures = listFeaturesForProject(project);
+  const allFeatures = await listFeaturesForProject(project);
   const statusDef = featureStatuses[feature.status];
 
   return (

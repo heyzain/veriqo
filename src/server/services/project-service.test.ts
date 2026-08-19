@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from "vitest";
 
-import { store } from "@/server/repositories/store";
+import { resetTestDb } from "@/test/db";
 import type { PublicUser } from "@/types/auth";
 
 import {
@@ -10,16 +10,6 @@ import {
   toggleProjectArchivedForOwner,
   updateProjectForOwner,
 } from "./project-service";
-
-function resetStore() {
-  store.users.clear();
-  store.usersByEmail.clear();
-  store.tokens.clear();
-  store.invites.clear();
-  store.projects.clear();
-  store.activity.length = 0;
-  store.seeded = true; // Skip demo seeding — these tests own their own fixtures.
-}
 
 const owner: PublicUser = {
   id: "user-owner",
@@ -36,11 +26,11 @@ const intruder: PublicUser = {
   createdAt: new Date().toISOString(),
 };
 
-beforeEach(resetStore);
+beforeEach(resetTestDb);
 
 describe("project-service — tenant isolation", () => {
-  it("rejects cross-owner access to a project by slug (mandatory business rule)", () => {
-    const project = createProjectForOwner(
+  it("rejects cross-owner access to a project by slug (mandatory business rule)", async () => {
+    const project = await createProjectForOwner(
       {
         name: "Owner's Project",
         description: "A project only its owner should be able to open.",
@@ -50,39 +40,39 @@ describe("project-service — tenant isolation", () => {
       owner,
     );
 
-    expect(getProjectForOwner(project.slug, owner)).not.toBeNull();
-    expect(getProjectForOwner(project.slug, intruder)).toBeNull();
+    expect(await getProjectForOwner(project.slug, owner)).not.toBeNull();
+    expect(await getProjectForOwner(project.slug, intruder)).toBeNull();
   });
 
-  it("never lists another owner's projects", () => {
-    createProjectForOwner(
+  it("never lists another owner's projects", async () => {
+    await createProjectForOwner(
       { name: "Owner Alpha", description: "Owned by owner.", appUrl: "https://a.example.com", environment: "staging" },
       owner,
     );
-    createProjectForOwner(
+    await createProjectForOwner(
       { name: "Intruder Beta", description: "Owned by intruder.", appUrl: "https://b.example.com", environment: "staging" },
       intruder,
     );
 
-    const { active } = listProjects(owner);
+    const { active } = await listProjects(owner);
     expect(active).toHaveLength(1);
     expect(active[0]!.name).toBe("Owner Alpha");
   });
 
-  it("returns identical null for a nonexistent slug and a slug owned by someone else", () => {
-    const project = createProjectForOwner(
+  it("returns identical null for a nonexistent slug and a slug owned by someone else", async () => {
+    const project = await createProjectForOwner(
       { name: "Real Project", description: "Exists, but not owned by the intruder.", appUrl: "https://example.com", environment: "production" },
       owner,
     );
 
-    expect(getProjectForOwner("does-not-exist", intruder)).toBeNull();
-    expect(getProjectForOwner(project.slug, intruder)).toBeNull();
+    expect(await getProjectForOwner("does-not-exist", intruder)).toBeNull();
+    expect(await getProjectForOwner(project.slug, intruder)).toBeNull();
   });
 });
 
 describe("project-service — creation", () => {
-  it("marks a newly created project's first setup step complete", () => {
-    const project = createProjectForOwner(
+  it("marks a newly created project's first setup step complete", async () => {
+    const project = await createProjectForOwner(
       { name: "Fresh Project", description: "Just created.", appUrl: "https://example.com", environment: "development" },
       owner,
     );
@@ -90,12 +80,12 @@ describe("project-service — creation", () => {
     expect(project.archived).toBe(false);
   });
 
-  it("disambiguates a duplicate project name with a distinct slug and code", () => {
-    const first = createProjectForOwner(
+  it("disambiguates a duplicate project name with a distinct slug and code", async () => {
+    const first = await createProjectForOwner(
       { name: "Duplicate Name", description: "First one.", appUrl: "https://a.example.com", environment: "staging" },
       owner,
     );
-    const second = createProjectForOwner(
+    const second = await createProjectForOwner(
       { name: "Duplicate Name", description: "Second one.", appUrl: "https://b.example.com", environment: "staging" },
       owner,
     );
@@ -105,13 +95,13 @@ describe("project-service — creation", () => {
 });
 
 describe("project-service — updates and settings", () => {
-  it("allows owner to update project settings and records activity", () => {
-    const project = createProjectForOwner(
+  it("allows owner to update project settings and records activity", async () => {
+    const project = await createProjectForOwner(
       { name: "Initial Name", description: "Initial description.", appUrl: "https://example.com", environment: "development" },
       owner,
     );
 
-    const updated = updateProjectForOwner(
+    const updated = await updateProjectForOwner(
       project.slug,
       {
         name: "Updated Name",
@@ -129,7 +119,7 @@ describe("project-service — updates and settings", () => {
     expect(updated?.repository).toBe("github.com/owner/repo");
 
     // Intruder cannot update owner's project
-    const unauthorized = updateProjectForOwner(
+    const unauthorized = await updateProjectForOwner(
       project.slug,
       {
         name: "Hacked",
@@ -142,18 +132,17 @@ describe("project-service — updates and settings", () => {
     expect(unauthorized).toBeNull();
   });
 
-  it("toggles archive state correctly", () => {
-    const project = createProjectForOwner(
+  it("toggles archive state correctly", async () => {
+    const project = await createProjectForOwner(
       { name: "Active Project", description: "Desc", appUrl: "https://example.com", environment: "staging" },
       owner,
     );
     expect(project.archived).toBe(false);
 
-    const archived = toggleProjectArchivedForOwner(project.slug, owner);
+    const archived = await toggleProjectArchivedForOwner(project.slug, owner);
     expect(archived?.archived).toBe(true);
 
-    const unarchived = toggleProjectArchivedForOwner(project.slug, owner);
+    const unarchived = await toggleProjectArchivedForOwner(project.slug, owner);
     expect(unarchived?.archived).toBe(false);
   });
 });
-

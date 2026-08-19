@@ -25,7 +25,7 @@ import type { TestEvidence, TestRun } from "@/types/domain";
 async function requireProject(projectSlug: string) {
   const user = await getCurrentUser();
   if (!user) redirect("/sign-in");
-  const project = getProjectForOwner(projectSlug, user);
+  const project = await getProjectForOwner(projectSlug, user);
   if (!project) redirect("/projects");
   return { user, project };
 }
@@ -61,13 +61,13 @@ export async function createTestRunAction(
 
   const user = await getCurrentUser();
   if (!user) return formErrorState("Your session expired. Sign in again.", values);
-  const project = getProjectForOwner(projectSlug, user);
+  const project = await getProjectForOwner(projectSlug, user);
   if (!project) return formErrorState("Project could not be found.", values);
 
   const parsed = testRunCreateFormSchema.safeParse(values);
   if (!parsed.success) return fieldErrorsFromZod(parsed.error, values);
 
-  const result = createTestRun(
+  const result = await createTestRun(
     project,
     {
       name: parsed.data.name,
@@ -93,7 +93,7 @@ export async function startTestRunAction(formData: FormData): Promise<void> {
   const runId = String(formData.get("runId") ?? "");
   const { user, project } = await requireProject(projectSlug);
 
-  startTestRun(project, runId, user.name);
+  await startTestRun(project, runId, user.name);
   redirect(`/projects/${projectSlug}/test-runs/${runId}/run`);
 }
 
@@ -103,7 +103,7 @@ export async function pauseTestRunAction(formData: FormData): Promise<void> {
   const redirectTo = String(formData.get("redirectTo") ?? "");
   const { user, project } = await requireProject(projectSlug);
 
-  pauseTestRun(project, runId, user.name);
+  await pauseTestRun(project, runId, user.name);
   redirect(redirectTo.startsWith("/") ? redirectTo : `/projects/${projectSlug}/test-runs/${runId}`);
 }
 
@@ -130,7 +130,7 @@ export async function submitTestResultAction(
 ): Promise<SubmitTestResultActionResult> {
   const user = await getCurrentUser();
   if (!user) return { ok: false, error: "Your session expired. Sign in again." };
-  const project = getProjectForOwner(input.projectSlug, user);
+  const project = await getProjectForOwner(input.projectSlug, user);
   if (!project) return { ok: false, error: "Project could not be found." };
 
   const parsed = submitTestResultSchema.safeParse({
@@ -142,7 +142,7 @@ export async function submitTestResultAction(
     return { ok: false, error: parsed.error.issues[0]?.message ?? "Couldn't record this result." };
   }
 
-  const result = submitTestResult(
+  const result = await submitTestResult(
     project,
     input.runId,
     input.testCaseId,
@@ -154,13 +154,13 @@ export async function submitTestResultAction(
   // Hard business rule (03-CLAUDE-RULES.md): a fix does not verify an issue —
   // only an applicable passed rerun can. This is the one place a recorded
   // result can close (or reopen) an issue's retest cycle.
-  const updatedIssue = applyRerunResultToIssuesForCase(project, result.data.testRun, input.testCaseId, result.data.result);
+  const updatedIssue = await applyRerunResultToIssuesForCase(project, result.data.testRun, input.testCaseId, result.data.result);
   if (updatedIssue) revalidatePath(`/projects/${input.projectSlug}/issues/${updatedIssue.publicId}`);
 
   revalidatePath(`/projects/${input.projectSlug}/test-runs/${input.runId}`);
   revalidatePath(`/projects/${input.projectSlug}/test-runs`);
 
-  const detail = getTestRunDetail(project, input.runId);
+  const detail = await getTestRunDetail(project, input.runId);
   return {
     ok: true,
     testRun: result.data.testRun,
@@ -177,7 +177,7 @@ export async function approveClaudeResultAction(formData: FormData): Promise<voi
   const testCaseId = String(formData.get("testCaseId") ?? "");
   const { user, project } = await requireProject(projectSlug);
 
-  approveClaudeResult(project, runId, testCaseId, user.name);
+  await approveClaudeResult(project, runId, testCaseId, user.name);
   redirect(`/projects/${projectSlug}/test-runs/${runId}`);
 }
 
@@ -187,7 +187,7 @@ export async function rejectClaudeResultAction(formData: FormData): Promise<void
   const testCaseId = String(formData.get("testCaseId") ?? "");
   const { user, project } = await requireProject(projectSlug);
 
-  rejectClaudeResult(project, runId, testCaseId, user.name);
+  await rejectClaudeResult(project, runId, testCaseId, user.name);
   redirect(`/projects/${projectSlug}/test-runs/${runId}`);
 }
 
@@ -213,13 +213,13 @@ export async function correctTestResultAction(
 
   const user = await getCurrentUser();
   if (!user) return formErrorState("Your session expired. Sign in again.", values);
-  const project = getProjectForOwner(projectSlug, user);
+  const project = await getProjectForOwner(projectSlug, user);
   if (!project) return formErrorState("Project could not be found.", values);
 
   const parsed = submitTestResultSchema.safeParse({ status: values.status, actualResult: values.actualResult, evidence: [] });
   if (!parsed.success) return fieldErrorsFromZod(parsed.error, values);
 
-  const result = submitTestResult(
+  const result = await submitTestResult(
     project,
     runId,
     testCaseId,
@@ -228,7 +228,7 @@ export async function correctTestResultAction(
   );
   if (!result.ok) return formErrorState(result.error, values);
 
-  const updatedIssue = applyRerunResultToIssuesForCase(project, result.data.testRun, testCaseId, result.data.result);
+  const updatedIssue = await applyRerunResultToIssuesForCase(project, result.data.testRun, testCaseId, result.data.result);
   if (updatedIssue) revalidatePath(`/projects/${projectSlug}/issues/${updatedIssue.publicId}`);
   revalidatePath(`/projects/${projectSlug}/test-runs/${runId}`);
 
@@ -246,7 +246,7 @@ export async function pollTestRunActivityAction(
 ): Promise<TestRunActivitySince | null> {
   const user = await getCurrentUser();
   if (!user) return null;
-  const project = getProjectForOwner(projectSlug, user);
+  const project = await getProjectForOwner(projectSlug, user);
   if (!project) return null;
   return getTestRunActivitySince(project, runPublicId, sinceIso);
 }

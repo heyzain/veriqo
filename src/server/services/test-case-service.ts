@@ -49,17 +49,18 @@ function normalizeTitle(title: string): string {
  * unlike a feature's project-wide check, since short case titles like
  * "shows an error" legitimately repeat across unrelated features.
  */
-function findPossibleDuplicate(
+async function findPossibleDuplicate(
   projectId: string,
   featureId: string,
   title: string,
   excludeTestCaseId?: string,
-): TestCase | null {
+): Promise<TestCase | null> {
   const normalized = normalizeTitle(title);
   if (!normalized) return null;
 
+  const testCases = await repoListTestCasesForProject(projectId);
   return (
-    repoListTestCasesForProject(projectId).find((tc) => {
+    testCases.find((tc) => {
       if (tc.id === excludeTestCaseId || tc.featureId !== featureId || tc.status === "archived") return false;
       const candidate = normalizeTitle(tc.title);
       return candidate === normalized || candidate.includes(normalized) || normalized.includes(candidate);
@@ -67,15 +68,15 @@ function findPossibleDuplicate(
   );
 }
 
-function testCaseActivity(
+async function testCaseActivity(
   projectId: string,
   actorType: ActivityEvent["actorType"],
   actorName: string,
   action: string,
   entityId: string,
   extra?: Partial<Pick<ActivityEvent, "relatedEntities" | "metadata">>,
-): void {
-  recordActivity({
+): Promise<void> {
+  await recordActivity({
     id: randomUUID(),
     projectId,
     actorType,
@@ -88,7 +89,7 @@ function testCaseActivity(
   });
 }
 
-export function listTestCasesForProject(project: Project): TestCase[] {
+export async function listTestCasesForProject(project: Project): Promise<TestCase[]> {
   return repoListTestCasesForProject(project.id);
 }
 
@@ -106,28 +107,27 @@ export type TestCaseGenerationInput = {
   idempotencyKey?: string;
 };
 
-export function createTestCaseFromGeneration(
+export async function createTestCaseFromGeneration(
   project: Project,
   input: TestCaseGenerationInput,
-): TestCaseServiceResult<{ testCase: TestCase; project: Project }> {
+): Promise<TestCaseServiceResult<{ testCase: TestCase; project: Project }>> {
   if (input.idempotencyKey) {
-    const replay = repoListTestCasesForProject(project.id).find(
-      (tc) => tc.idempotencyKey === input.idempotencyKey,
-    );
+    const existingCases = await repoListTestCasesForProject(project.id);
+    const replay = existingCases.find((tc) => tc.idempotencyKey === input.idempotencyKey);
     if (replay) return ok({ testCase: replay, project });
   }
 
-  const feature = findFeatureByPublicId(project.id, input.featureId);
+  const feature = await findFeatureByPublicId(project.id, input.featureId);
   if (!feature) return fail(`Unknown feature "${input.featureId}" — featureId must be an existing feature's public ID.`);
   if (feature.status === "archived") return fail(`${feature.publicId} is archived. Test cases can't be added to it.`);
 
-  const duplicate = findPossibleDuplicate(project.id, feature.id, input.title);
+  const duplicate = await findPossibleDuplicate(project.id, feature.id, input.title);
   const prefix = testCaseModulePrefix(feature.name);
   const now = new Date().toISOString();
 
   const testCase: TestCase = {
     id: randomUUID(),
-    publicId: nextTestCasePublicId(prefix, testCasePublicIdsWithPrefix(project.id, prefix)),
+    publicId: nextTestCasePublicId(prefix, await testCasePublicIdsWithPrefix(project.id, prefix)),
     projectId: project.id,
     featureId: feature.id,
     title: input.title.trim(),
@@ -146,11 +146,11 @@ export function createTestCaseFromGeneration(
     createdAt: now,
     updatedAt: now,
   };
-  saveTestCase(testCase);
+  await saveTestCase(testCase);
 
-  const updatedProject = advanceSetupStep(project, 5);
+  const updatedProject = await advanceSetupStep(project, 5);
 
-  testCaseActivity(
+  await testCaseActivity(
     project.id,
     "claude",
     "Claude",
@@ -168,7 +168,7 @@ export function createTestCaseFromGeneration(
   );
 
   if (updatedProject !== project) {
-    testCaseActivity(
+    await testCaseActivity(
       project.id,
       "system",
       "Veriqo",
@@ -190,12 +190,12 @@ export type TestCaseUpdateInput = Partial<{
   environments: string[];
 }>;
 
-export function updateTestCaseFromGeneration(
+export async function updateTestCaseFromGeneration(
   project: Project,
   publicId: string,
   input: TestCaseUpdateInput,
-): TestCaseServiceResult<{ testCase: TestCase; project: Project }> {
-  const existing = findTestCaseByPublicId(project.id, publicId);
+): Promise<TestCaseServiceResult<{ testCase: TestCase; project: Project }>> {
+  const existing = await findTestCaseByPublicId(project.id, publicId);
   if (!existing) return fail(`No test case with public ID "${publicId}" in this project.`);
   if (existing.status === "archived") return fail(`${publicId} is archived. Restore it before updating.`);
 
@@ -223,11 +223,11 @@ export function updateTestCaseFromGeneration(
     promptVersion: testGenerationPrompt.version,
     updatedAt: now,
   };
-  saveTestCase(updated);
+  await saveTestCase(updated);
 
-  const updatedProject = advanceSetupStep(project, 5);
+  const updatedProject = await advanceSetupStep(project, 5);
 
-  testCaseActivity(
+  await testCaseActivity(
     project.id,
     "claude",
     "Claude",
@@ -241,15 +241,15 @@ export function updateTestCaseFromGeneration(
   return ok({ testCase: updated, project: updatedProject });
 }
 
-export function listTestCasesForMcp(
+export async function listTestCasesForMcp(
   project: Project,
   status?: TestCaseStatus,
   featurePublicId?: string,
-): TestCase[] {
-  let all = repoListTestCasesForProject(project.id);
+): Promise<TestCase[]> {
+  let all = await repoListTestCasesForProject(project.id);
   if (status) all = all.filter((tc) => tc.status === status);
   if (featurePublicId) {
-    const feature = findFeatureByPublicId(project.id, featurePublicId);
+    const feature = await findFeatureByPublicId(project.id, featurePublicId);
     all = feature ? all.filter((tc) => tc.featureId === feature.id) : [];
   }
   return all;
@@ -262,20 +262,19 @@ export function listTestCasesForMcp(
  * `feature-service.updateFeatureFromDiscovery` — a case already `needsUpdate`
  * or earlier in review doesn't need a second nudge.
  */
-export function markTestCasesNeedsUpdateForFeatureChange(
+export async function markTestCasesNeedsUpdateForFeatureChange(
   project: Project,
   featureId: string,
   featurePublicId: string,
-): number {
+): Promise<number> {
   const now = new Date().toISOString();
-  const affected = repoListTestCasesForProject(project.id).filter(
-    (tc) => tc.featureId === featureId && tc.status === "ready",
-  );
+  const allCases = await repoListTestCasesForProject(project.id);
+  const affected = allCases.filter((tc) => tc.featureId === featureId && tc.status === "ready");
   for (const testCase of affected) {
-    saveTestCase({ ...testCase, status: "needsUpdate", updatedAt: now });
+    await saveTestCase({ ...testCase, status: "needsUpdate", updatedAt: now });
   }
   if (affected.length > 0) {
-    testCaseActivity(
+    await testCaseActivity(
       project.id,
       "system",
       "Veriqo",
@@ -289,12 +288,12 @@ export function markTestCasesNeedsUpdateForFeatureChange(
 
 // ---- Human review actions ----
 
-export function approveTestCase(
+export async function approveTestCase(
   project: Project,
   publicId: string,
   actorName: string,
-): TestCaseServiceResult<{ testCase: TestCase }> {
-  const existing = findTestCaseByPublicId(project.id, publicId);
+): Promise<TestCaseServiceResult<{ testCase: TestCase }>> {
+  const existing = await findTestCaseByPublicId(project.id, publicId);
   if (!existing) return fail("Test case not found.");
   if (existing.status === "ready") return ok({ testCase: existing });
   if (existing.status === "archived") return fail(`${publicId} is archived. Restore it before approving.`);
@@ -307,23 +306,23 @@ export function approveTestCase(
     possibleDuplicateOfId: undefined,
     updatedAt: now,
   };
-  saveTestCase(updated);
+  await saveTestCase(updated);
 
-  testCaseActivity(project.id, "human", actorName, `approved ${updated.publicId} — ${updated.title}`, updated.id);
+  await testCaseActivity(project.id, "human", actorName, `approved ${updated.publicId} — ${updated.title}`, updated.id);
 
   return ok({ testCase: updated });
 }
 
-export function bulkApproveTestCases(
+export async function bulkApproveTestCases(
   project: Project,
   publicIds: readonly string[],
   actorName: string,
-): TestCaseServiceResult<{ approvedCount: number }> {
+): Promise<TestCaseServiceResult<{ approvedCount: number }>> {
   const now = new Date().toISOString();
   const approved: TestCase[] = [];
 
   for (const publicId of publicIds) {
-    const existing = findTestCaseByPublicId(project.id, publicId);
+    const existing = await findTestCaseByPublicId(project.id, publicId);
     if (!existing || existing.status === "ready" || existing.status === "archived") continue;
     const updated: TestCase = {
       ...existing,
@@ -332,13 +331,13 @@ export function bulkApproveTestCases(
       possibleDuplicateOfId: undefined,
       updatedAt: now,
     };
-    saveTestCase(updated);
+    await saveTestCase(updated);
     approved.push(updated);
   }
 
   if (approved.length === 0) return ok({ approvedCount: 0 });
 
-  testCaseActivity(
+  await testCaseActivity(
     project.id,
     "human",
     actorName,
@@ -359,13 +358,13 @@ export type TestCaseEditInput = {
   environments: string[];
 };
 
-export function editTestCase(
+export async function editTestCase(
   project: Project,
   publicId: string,
   input: TestCaseEditInput,
   actorName: string,
-): TestCaseServiceResult<{ testCase: TestCase }> {
-  const existing = findTestCaseByPublicId(project.id, publicId);
+): Promise<TestCaseServiceResult<{ testCase: TestCase }>> {
+  const existing = await findTestCaseByPublicId(project.id, publicId);
   if (!existing) return fail("Test case not found.");
   if (existing.status === "archived") return fail(`${publicId} is archived. Restore it before editing.`);
 
@@ -385,50 +384,50 @@ export function editTestCase(
     possibleDuplicateOfId: undefined,
     updatedAt: now,
   };
-  saveTestCase(updated);
+  await saveTestCase(updated);
 
-  testCaseActivity(project.id, "human", actorName, `edited ${updated.publicId} — ${updated.title}`, updated.id);
+  await testCaseActivity(project.id, "human", actorName, `edited ${updated.publicId} — ${updated.title}`, updated.id);
 
   return ok({ testCase: updated });
 }
 
-export function archiveTestCase(
+export async function archiveTestCase(
   project: Project,
   publicId: string,
   actorName: string,
-): TestCaseServiceResult<{ testCase: TestCase }> {
-  const existing = findTestCaseByPublicId(project.id, publicId);
+): Promise<TestCaseServiceResult<{ testCase: TestCase }>> {
+  const existing = await findTestCaseByPublicId(project.id, publicId);
   if (!existing) return fail("Test case not found.");
   if (existing.status === "archived") return ok({ testCase: existing });
 
   const now = new Date().toISOString();
   const updated: TestCase = { ...existing, status: "archived", updatedAt: now };
-  saveTestCase(updated);
+  await saveTestCase(updated);
 
-  testCaseActivity(project.id, "human", actorName, `archived ${updated.publicId} — ${updated.title}`, updated.id);
+  await testCaseActivity(project.id, "human", actorName, `archived ${updated.publicId} — ${updated.title}`, updated.id);
 
   return ok({ testCase: updated });
 }
 
-export function bulkArchiveTestCases(
+export async function bulkArchiveTestCases(
   project: Project,
   publicIds: readonly string[],
   actorName: string,
-): TestCaseServiceResult<{ archivedCount: number }> {
+): Promise<TestCaseServiceResult<{ archivedCount: number }>> {
   const now = new Date().toISOString();
   const archived: TestCase[] = [];
 
   for (const publicId of publicIds) {
-    const existing = findTestCaseByPublicId(project.id, publicId);
+    const existing = await findTestCaseByPublicId(project.id, publicId);
     if (!existing || existing.status === "archived") continue;
     const updated: TestCase = { ...existing, status: "archived", updatedAt: now };
-    saveTestCase(updated);
+    await saveTestCase(updated);
     archived.push(updated);
   }
 
   if (archived.length === 0) return ok({ archivedCount: 0 });
 
-  testCaseActivity(
+  await testCaseActivity(
     project.id,
     "human",
     actorName,
@@ -439,20 +438,20 @@ export function bulkArchiveTestCases(
   return ok({ archivedCount: archived.length });
 }
 
-export function restoreTestCase(
+export async function restoreTestCase(
   project: Project,
   publicId: string,
   actorName: string,
-): TestCaseServiceResult<{ testCase: TestCase }> {
-  const existing = findTestCaseByPublicId(project.id, publicId);
+): Promise<TestCaseServiceResult<{ testCase: TestCase }>> {
+  const existing = await findTestCaseByPublicId(project.id, publicId);
   if (!existing) return fail("Test case not found.");
   if (existing.status !== "archived") return ok({ testCase: existing });
 
   const now = new Date().toISOString();
   const updated: TestCase = { ...existing, status: "draft", updatedAt: now };
-  saveTestCase(updated);
+  await saveTestCase(updated);
 
-  testCaseActivity(project.id, "human", actorName, `restored ${updated.publicId} from archive`, updated.id);
+  await testCaseActivity(project.id, "human", actorName, `restored ${updated.publicId} from archive`, updated.id);
 
   return ok({ testCase: updated });
 }
@@ -463,12 +462,12 @@ export function restoreTestCase(
  * archive" set. Flags the clone as a possible duplicate of its source so the
  * existing duplicate-flag UI treatment surfaces it without new UI.
  */
-export function duplicateTestCase(
+export async function duplicateTestCase(
   project: Project,
   publicId: string,
   actorName: string,
-): TestCaseServiceResult<{ testCase: TestCase }> {
-  const existing = findTestCaseByPublicId(project.id, publicId);
+): Promise<TestCaseServiceResult<{ testCase: TestCase }>> {
+  const existing = await findTestCaseByPublicId(project.id, publicId);
   if (!existing) return fail("Test case not found.");
 
   const prefix = existing.publicId.split("-")[0] ?? "TC";
@@ -476,7 +475,7 @@ export function duplicateTestCase(
   const clone: TestCase = {
     ...existing,
     id: randomUUID(),
-    publicId: nextTestCasePublicId(prefix, testCasePublicIdsWithPrefix(project.id, prefix)),
+    publicId: nextTestCasePublicId(prefix, await testCasePublicIdsWithPrefix(project.id, prefix)),
     title: `${existing.title} (copy)`,
     status: "draft",
     createdBySource: "human",
@@ -488,9 +487,9 @@ export function duplicateTestCase(
     createdAt: now,
     updatedAt: now,
   };
-  saveTestCase(clone);
+  await saveTestCase(clone);
 
-  testCaseActivity(project.id, "human", actorName, `duplicated ${existing.publicId} as ${clone.publicId}`, clone.id, {
+  await testCaseActivity(project.id, "human", actorName, `duplicated ${existing.publicId} as ${clone.publicId}`, clone.id, {
     relatedEntities: [{ type: "testCase", id: existing.id }],
   });
 
@@ -504,12 +503,13 @@ export type TestCaseGenerationActivitySince = {
   newTestCaseCount: number;
 };
 
-export function getTestCaseGenerationActivitySince(
+export async function getTestCaseGenerationActivitySince(
   project: Project,
   sinceIso: string,
-): TestCaseGenerationActivitySince {
+): Promise<TestCaseGenerationActivitySince> {
   const since = new Date(sinceIso).getTime();
-  const events = listActivityForProject(project.id)
+  const allActivity = await listActivityForProject(project.id);
+  const events = allActivity
     .filter((event) => event.entityType === "testCase" && new Date(event.createdAt).getTime() > since)
     .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())
     .slice(-30);

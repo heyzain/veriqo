@@ -30,7 +30,7 @@ function safeRedirectTarget(target: string, fallback: string): string {
 async function requireProject(projectSlug: string) {
   const user = await getCurrentUser();
   if (!user) redirect("/sign-in");
-  const project = getProjectForOwner(projectSlug, user);
+  const project = await getProjectForOwner(projectSlug, user);
   if (!project) redirect("/projects");
   return { user, project };
 }
@@ -41,7 +41,7 @@ export async function approveTestCaseAction(formData: FormData): Promise<void> {
   const redirectTo = String(formData.get("redirectTo") ?? "");
   const { user, project } = await requireProject(projectSlug);
 
-  approveTestCase(project, testCaseId, user.name);
+  await approveTestCase(project, testCaseId, user.name);
   redirect(safeRedirectTarget(redirectTo, `/projects/${projectSlug}/test-cases`));
 }
 
@@ -51,7 +51,7 @@ export async function archiveTestCaseAction(formData: FormData): Promise<void> {
   const redirectTo = String(formData.get("redirectTo") ?? "");
   const { user, project } = await requireProject(projectSlug);
 
-  archiveTestCase(project, testCaseId, user.name);
+  await archiveTestCase(project, testCaseId, user.name);
   redirect(safeRedirectTarget(redirectTo, `/projects/${projectSlug}/test-cases`));
 }
 
@@ -61,7 +61,7 @@ export async function restoreTestCaseAction(formData: FormData): Promise<void> {
   const redirectTo = String(formData.get("redirectTo") ?? "");
   const { user, project } = await requireProject(projectSlug);
 
-  restoreTestCase(project, testCaseId, user.name);
+  await restoreTestCase(project, testCaseId, user.name);
   redirect(safeRedirectTarget(redirectTo, `/projects/${projectSlug}/test-cases`));
 }
 
@@ -71,7 +71,7 @@ export async function duplicateTestCaseAction(formData: FormData): Promise<void>
   const redirectTo = String(formData.get("redirectTo") ?? "");
   const { user, project } = await requireProject(projectSlug);
 
-  duplicateTestCase(project, testCaseId, user.name);
+  await duplicateTestCase(project, testCaseId, user.name);
   redirect(safeRedirectTarget(redirectTo, `/projects/${projectSlug}/test-cases`));
 }
 
@@ -81,7 +81,7 @@ export async function bulkApproveTestCasesAction(formData: FormData): Promise<vo
   const redirectTo = String(formData.get("redirectTo") ?? "");
   const { user, project } = await requireProject(projectSlug);
 
-  bulkApproveTestCases(project, testCaseIds, user.name);
+  await bulkApproveTestCases(project, testCaseIds, user.name);
   redirect(safeRedirectTarget(redirectTo, `/projects/${projectSlug}/test-cases`));
 }
 
@@ -91,7 +91,7 @@ export async function bulkArchiveTestCasesAction(formData: FormData): Promise<vo
   const redirectTo = String(formData.get("redirectTo") ?? "");
   const { user, project } = await requireProject(projectSlug);
 
-  bulkArchiveTestCases(project, testCaseIds, user.name);
+  await bulkArchiveTestCases(project, testCaseIds, user.name);
   redirect(safeRedirectTarget(redirectTo, `/projects/${projectSlug}/test-cases`));
 }
 
@@ -123,13 +123,13 @@ export async function editTestCaseAction(
 
   const user = await getCurrentUser();
   if (!user) return formErrorState("Your session expired. Sign in again.", values);
-  const project = getProjectForOwner(projectSlug, user);
+  const project = await getProjectForOwner(projectSlug, user);
   if (!project) return formErrorState("Project could not be found.", values);
 
   const parsed = testCaseEditFormSchema.safeParse(values);
   if (!parsed.success) return fieldErrorsFromZod(parsed.error, values);
 
-  const result = editTestCase(
+  const result = await editTestCase(
     project,
     testCaseId,
     {
@@ -160,7 +160,7 @@ export async function pollTestCaseGenerationActivityAction(
 ): Promise<TestCaseGenerationActivitySince | null> {
   const user = await getCurrentUser();
   if (!user) return null;
-  const project = getProjectForOwner(projectSlug, user);
+  const project = await getProjectForOwner(projectSlug, user);
   if (!project) return null;
   return getTestCaseGenerationActivitySince(project, sinceIso);
 }

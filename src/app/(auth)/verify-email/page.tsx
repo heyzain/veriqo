@@ -17,7 +17,7 @@ export default async function VerifyEmailPage({
   const { token, devToken } = await searchParams;
 
   if (token) {
-    const result = verifyEmail(token);
+    const result = await verifyEmail(token);
 
     if (result.ok) {
       return (

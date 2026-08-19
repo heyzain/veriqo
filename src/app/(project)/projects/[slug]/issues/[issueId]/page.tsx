@@ -24,8 +24,8 @@ export async function generateMetadata({
   params: Promise<{ slug: string; issueId: string }>;
 }): Promise<Metadata> {
   const [user, { slug, issueId }] = await Promise.all([getCurrentUser(), params]);
-  const project = user ? getProjectForOwner(slug, user) : null;
-  const detail = project ? getIssueDetail(project, issueId) : null;
+  const project = user ? await getProjectForOwner(slug, user) : null;
+  const detail = project ? await getIssueDetail(project, issueId) : null;
   return { title: detail ? `${detail.issue.publicId} · ${detail.issue.title}` : "Issue" };
 }
 
@@ -40,10 +40,10 @@ export default async function IssueDetailPage({
   if (!user) redirect("/sign-in");
 
   const { slug, issueId } = await params;
-  const project = getProjectForOwner(slug, user);
+  const project = await getProjectForOwner(slug, user);
   if (!project) notFound();
 
-  const detail = getIssueDetail(project, issueId);
+  const detail = await getIssueDetail(project, issueId);
   if (!detail) notFound();
 
   const { issue, feature, testCase, originResult, originTestRun, rerunTestRun, rerunResult, activity } = detail;

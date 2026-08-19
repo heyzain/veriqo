@@ -23,7 +23,7 @@ export async function generateMetadata({
   params: Promise<{ slug: string }>;
 }): Promise<Metadata> {
   const [user, { slug }] = await Promise.all([getCurrentUser(), params]);
-  const summary = user ? getProjectSummary(slug, user) : null;
+  const summary = user ? await getProjectSummary(slug, user) : null;
   return { title: summary ? `${summary.project.name} · Overview` : "Project Overview" };
 }
 
@@ -36,15 +36,15 @@ export default async function ProjectOverviewPage({
   if (!user) redirect("/sign-in");
 
   const { slug } = await params;
-  const summary = getProjectSummary(slug, user);
+  const summary = await getProjectSummary(slug, user);
   if (!summary) notFound();
 
-  const records = getProjectRecords(slug, user);
+  const records = await getProjectRecords(slug, user);
   if (!records) notFound();
 
   const { project } = summary;
   const isFullySetUp = project.setupStepsCompleted >= totalSetupSteps;
-  const mcpSnapshot = getMcpConnectionSnapshot(project);
+  const mcpSnapshot = await getMcpConnectionSnapshot(project);
   const readiness = isFullySetUp ? getReleaseReadiness(records) : null;
 
   return (

@@ -45,15 +45,15 @@ function fail<T>(error: string): IssueServiceResult<T> {
   return { ok: false, error };
 }
 
-function activity(
+async function activity(
   projectId: string,
   actorType: ActivityEvent["actorType"],
   actorName: string,
   action: string,
   entityId: string,
   extra?: Partial<Pick<ActivityEvent, "relatedEntities" | "metadata">>,
-): void {
-  recordActivity({
+): Promise<void> {
+  await recordActivity({
     id: randomUUID(),
     projectId,
     actorType,
@@ -66,10 +66,9 @@ function activity(
   });
 }
 
-export function listIssuesForProject(project: Project): Issue[] {
-  return repoListIssuesForProject(project.id).sort(
-    (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
-  );
+export async function listIssuesForProject(project: Project): Promise<Issue[]> {
+  const issues = await repoListIssuesForProject(project.id);
+  return issues.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 }
 
 export type IssueDetail = {
@@ -83,24 +82,29 @@ export type IssueDetail = {
   activity: ActivityEvent[];
 };
 
-export function getIssueDetail(project: Project, publicId: string): IssueDetail | null {
-  const issue = findIssueByPublicId(project.id, publicId);
+export async function getIssueDetail(project: Project, publicId: string): Promise<IssueDetail | null> {
+  const issue = await findIssueByPublicId(project.id, publicId);
   if (!issue) return null;
 
-  const originResult = findTestResultById(project.id, issue.originResultId);
-  const originTestRun = originResult ? findTestRunById(project.id, originResult.testRunId) : null;
-  const rerunTestRun = issue.rerunTestRunId ? findTestRunById(project.id, issue.rerunTestRunId) : null;
-  const rerunResult = issue.rerunResultId ? findTestResultById(project.id, issue.rerunResultId) : null;
+  const originResult = await findTestResultById(project.id, issue.originResultId);
+  const [originTestRun, rerunTestRun, rerunResult, feature, testCase, allActivity] = await Promise.all([
+    originResult ? findTestRunById(project.id, originResult.testRunId) : Promise.resolve(null),
+    issue.rerunTestRunId ? findTestRunById(project.id, issue.rerunTestRunId) : Promise.resolve(null),
+    issue.rerunResultId ? findTestResultById(project.id, issue.rerunResultId) : Promise.resolve(null),
+    findFeatureById(project.id, issue.featureId),
+    findTestCaseById(project.id, issue.testCaseId),
+    listActivityForProject(project.id),
+  ]);
 
   return {
     issue,
-    feature: findFeatureById(project.id, issue.featureId),
-    testCase: findTestCaseById(project.id, issue.testCaseId),
+    feature,
+    testCase,
     originResult,
     originTestRun,
     rerunTestRun,
     rerunResult,
-    activity: listActivityForProject(project.id).filter(
+    activity: allActivity.filter(
       (event) =>
         event.entityType === "issue" &&
         (event.entityId === issue.id || event.relatedEntities?.some((r) => r.type === "issue" && r.id === issue.id)),
@@ -122,31 +126,31 @@ export type CreateIssueInput = {
  * keyed by the result instead of a caller-supplied key since there's only
  * ever one legitimate issue per failure).
  */
-export function createIssueFromFailedResult(
+export async function createIssueFromFailedResult(
   project: Project,
   testRunPublicId: string,
   testCasePublicId: string,
   input: CreateIssueInput,
   actorName: string,
-): IssueServiceResult<{ issue: Issue }> {
-  const testRun = findTestRunByPublicId(project.id, testRunPublicId);
+): Promise<IssueServiceResult<{ issue: Issue }>> {
+  const testRun = await findTestRunByPublicId(project.id, testRunPublicId);
   if (!testRun) return fail("Test run not found.");
-  const testCase = findTestCaseByPublicId(project.id, testCasePublicId);
+  const testCase = await findTestCaseByPublicId(project.id, testCasePublicId);
   if (!testCase) return fail("Test case not found.");
 
-  const result = findTestResult(testRun.id, testCase.id);
+  const result = await findTestResult(testRun.id, testCase.id);
   if (!result) return fail("No recorded result for this test case in this run.");
   if (result.status !== "fail" && result.status !== "partial" && result.status !== "blocked") {
     return fail("Issues can only be created from a fail, partial, or blocked result.");
   }
 
-  const existing = findIssueByOriginResultId(project.id, result.id);
+  const existing = await findIssueByOriginResultId(project.id, result.id);
   if (existing) return ok({ issue: existing });
 
   const now = new Date().toISOString();
   const issue: Issue = {
     id: randomUUID(),
-    publicId: nextIssuePublicId(issuePublicIds(project.id)),
+    publicId: nextIssuePublicId(await issuePublicIds(project.id)),
     projectId: project.id,
     featureId: testCase.featureId,
     testCaseId: testCase.id,
@@ -159,9 +163,9 @@ export function createIssueFromFailedResult(
     createdAt: now,
     updatedAt: now,
   };
-  saveIssue(issue);
+  await saveIssue(issue);
 
-  activity(
+  await activity(
     project.id,
     "human",
     actorName,
@@ -189,14 +193,14 @@ export function createIssueFromFailedResult(
  * `readyForRetest`/`verified`/`reopened` are reached only through the more
  * specific actions below, never through this generic setter.
  */
-export function updateIssueStatus(
+export async function updateIssueStatus(
   project: Project,
   publicId: string,
   nextStatus: Extract<IssueStatus, "open" | "investigating" | "fixInProgress">,
   actorName: string,
   actorType: ActivityEvent["actorType"] = "human",
-): IssueServiceResult<{ issue: Issue }> {
-  const existing = findIssueByPublicId(project.id, publicId);
+): Promise<IssueServiceResult<{ issue: Issue }>> {
+  const existing = await findIssueByPublicId(project.id, publicId);
   if (!existing) return fail("Issue not found.");
   if (existing.status === nextStatus) return ok({ issue: existing });
   if (!issueStatuses[existing.status].transitions.includes(nextStatus)) {
@@ -205,9 +209,9 @@ export function updateIssueStatus(
 
   const now = new Date().toISOString();
   const updated: Issue = { ...existing, status: nextStatus, updatedAt: now };
-  saveIssue(updated);
+  await saveIssue(updated);
 
-  activity(project.id, actorType, actorName, `moved ${updated.publicId} to ${issueStatuses[nextStatus].label}`, updated.id);
+  await activity(project.id, actorType, actorName, `moved ${updated.publicId} to ${issueStatuses[nextStatus].label}`, updated.id);
 
   return ok({ issue: updated });
 }
@@ -218,14 +222,14 @@ export function updateIssueStatus(
  * `fixInProgress`, or `reopened`), never directly from `open` (the
  * "Start investigating" action is the deliberate first step).
  */
-export function recordIssueFix(
+export async function recordIssueFix(
   project: Project,
   publicId: string,
   fixNote: string,
   actorName: string,
   actorType: ActivityEvent["actorType"] = "human",
-): IssueServiceResult<{ issue: Issue }> {
-  const existing = findIssueByPublicId(project.id, publicId);
+): Promise<IssueServiceResult<{ issue: Issue }>> {
+  const existing = await findIssueByPublicId(project.id, publicId);
   if (!existing) return fail("Issue not found.");
   if (existing.status !== "investigating" && existing.status !== "fixInProgress" && existing.status !== "reopened") {
     return fail(`${publicId} must be Investigating (or Reopened) before recording a fix.`);
@@ -233,21 +237,21 @@ export function recordIssueFix(
 
   const now = new Date().toISOString();
   const updated: Issue = { ...existing, fixNote: fixNote.trim(), status: "fixInProgress", updatedAt: now };
-  saveIssue(updated);
+  await saveIssue(updated);
 
-  activity(project.id, actorType, actorName, `recorded a fix for ${updated.publicId}`, updated.id, {
+  await activity(project.id, actorType, actorName, `recorded a fix for ${updated.publicId}`, updated.id, {
     metadata: { fixNote: updated.fixNote },
   });
 
   return ok({ issue: updated });
 }
 
-export function markIssueReadyForRetest(
+export async function markIssueReadyForRetest(
   project: Project,
   publicId: string,
   actorName: string,
-): IssueServiceResult<{ issue: Issue }> {
-  const existing = findIssueByPublicId(project.id, publicId);
+): Promise<IssueServiceResult<{ issue: Issue }>> {
+  const existing = await findIssueByPublicId(project.id, publicId);
   if (!existing) return fail("Issue not found.");
   if (existing.status === "readyForRetest") return ok({ issue: existing });
   if (existing.status !== "fixInProgress") {
@@ -261,9 +265,9 @@ export function markIssueReadyForRetest(
   // Clears any rerun from an earlier cycle — a fresh cycle starts with no
   // applicable rerun until "Create focused rerun" runs again.
   const updated: Issue = { ...existing, status: "readyForRetest", rerunTestRunId: undefined, updatedAt: now };
-  saveIssue(updated);
+  await saveIssue(updated);
 
-  activity(project.id, "human", actorName, `marked ${updated.publicId} ready for retest`, updated.id);
+  await activity(project.id, "human", actorName, `marked ${updated.publicId} ready for retest`, updated.id);
 
   return ok({ issue: updated });
 }
@@ -287,17 +291,17 @@ export type CreateFocusedRerunOutcome = { testRun: TestRun; issues: Issue[]; pro
  * aren't `readyForRetest` are silently skipped rather than failing the whole
  * batch, so a mixed bulk selection still runs for the eligible ones.
  */
-export function createFocusedRerun(
+export async function createFocusedRerun(
   project: Project,
   issuePublicIdsInScope: readonly string[],
   input: CreateFocusedRerunInput,
   actorName: string,
-): IssueServiceResult<CreateFocusedRerunOutcome> {
+): Promise<IssueServiceResult<CreateFocusedRerunOutcome>> {
   const eligible: { issue: Issue; testCase: TestCase }[] = [];
   for (const publicId of issuePublicIdsInScope) {
-    const issue = findIssueByPublicId(project.id, publicId);
+    const issue = await findIssueByPublicId(project.id, publicId);
     if (!issue || issue.status !== "readyForRetest") continue;
-    const testCase = findTestCaseById(project.id, issue.testCaseId);
+    const testCase = await findTestCaseById(project.id, issue.testCaseId);
     if (!testCase) continue;
     eligible.push({ issue, testCase });
   }
@@ -308,7 +312,7 @@ export function createFocusedRerun(
   const testCaseIds = Array.from(new Set(eligible.map((e) => e.testCase.publicId)));
   const issueLabel = eligible.length === 1 ? eligible[0].issue.publicId : `${eligible.length} issues`;
 
-  const runResult = createTestRun(
+  const runResult = await createTestRun(
     project,
     {
       name: `Focused rerun — ${issueLabel}`,
@@ -327,10 +331,10 @@ export function createFocusedRerun(
   const updatedIssues: Issue[] = [];
   for (const { issue } of eligible) {
     const updated: Issue = { ...issue, rerunTestRunId: runResult.data.testRun.id, updatedAt: now };
-    saveIssue(updated);
+    await saveIssue(updated);
     updatedIssues.push(updated);
 
-    activity(
+    await activity(
       project.id,
       "human",
       actorName,
@@ -345,7 +349,7 @@ export function createFocusedRerun(
 
 // ---- Verify / reopen — the hard business rule ----
 
-function verifyIssueFromPassedRerun(project: Project, issue: Issue, result: TestResult): Issue {
+async function verifyIssueFromPassedRerun(project: Project, issue: Issue, result: TestResult): Promise<Issue> {
   const now = new Date().toISOString();
   const updated: Issue = {
     ...issue,
@@ -354,14 +358,14 @@ function verifyIssueFromPassedRerun(project: Project, issue: Issue, result: Test
     rerunTestRunId: undefined,
     updatedAt: now,
   };
-  saveIssue(updated);
-  activity(project.id, "system", "Veriqo", `verified ${updated.publicId} from a passed rerun`, updated.id, {
+  await saveIssue(updated);
+  await activity(project.id, "system", "Veriqo", `verified ${updated.publicId} from a passed rerun`, updated.id, {
     relatedEntities: [{ type: "testResult", id: result.id }],
   });
   return updated;
 }
 
-function reopenIssueFromFailedRerun(project: Project, issue: Issue, result: TestResult): Issue {
+async function reopenIssueFromFailedRerun(project: Project, issue: Issue, result: TestResult): Promise<Issue> {
   const now = new Date().toISOString();
   const updated: Issue = {
     ...issue,
@@ -370,8 +374,8 @@ function reopenIssueFromFailedRerun(project: Project, issue: Issue, result: Test
     rerunTestRunId: undefined,
     updatedAt: now,
   };
-  saveIssue(updated);
-  activity(
+  await saveIssue(updated);
+  await activity(
     project.id,
     "system",
     "Veriqo",
@@ -390,13 +394,14 @@ function reopenIssueFromFailedRerun(project: Project, issue: Issue, result: Test
  * reopens it (anything else). Not exported from the MCP surface — Claude can
  * investigate and record a fix, but never asserts verification itself.
  */
-export function applyRerunResultToIssues(
+export async function applyRerunResultToIssues(
   project: Project,
   testRun: TestRun,
   testCase: TestCase,
   result: TestResult,
-): Issue | null {
-  const tracked = repoListIssuesForProject(project.id).find(
+): Promise<Issue | null> {
+  const issues = await repoListIssuesForProject(project.id);
+  const tracked = issues.find(
     (issue) => issue.status === "readyForRetest" && issue.rerunTestRunId === testRun.id && issue.testCaseId === testCase.id,
   );
   if (!tracked) return null;
@@ -412,13 +417,13 @@ export function applyRerunResultToIssues(
  * case's public ID, not the resolved `TestCase` — keeps repository lookups
  * inside the service layer rather than the action.
  */
-export function applyRerunResultToIssuesForCase(
+export async function applyRerunResultToIssuesForCase(
   project: Project,
   testRun: TestRun,
   testCasePublicId: string,
   result: TestResult,
-): Issue | null {
-  const testCase = findTestCaseByPublicId(project.id, testCasePublicId);
+): Promise<Issue | null> {
+  const testCase = await findTestCaseByPublicId(project.id, testCasePublicId);
   if (!testCase) return null;
   return applyRerunResultToIssues(project, testRun, testCase, result);
 }
@@ -472,12 +477,17 @@ export type IssueActivitySince = { events: ActivityEvent[] };
  * this only ever knows the public ID (04-CONFIG-BLUEPRINT.md, "Public IDs");
  * resolving it here keeps the internal ID out of the action/client layer.
  */
-export function getIssueActivitySince(project: Project, publicId: string, sinceIso: string): IssueActivitySince {
-  const issue = findIssueByPublicId(project.id, publicId);
+export async function getIssueActivitySince(
+  project: Project,
+  publicId: string,
+  sinceIso: string,
+): Promise<IssueActivitySince> {
+  const issue = await findIssueByPublicId(project.id, publicId);
   if (!issue) return { events: [] };
 
   const since = new Date(sinceIso).getTime();
-  const events = listActivityForProject(project.id)
+  const allActivity = await listActivityForProject(project.id);
+  const events = allActivity
     .filter(
       (event) =>
         (event.entityType === "issue" || event.entityType === "testResult") &&

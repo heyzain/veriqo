@@ -43,7 +43,7 @@ export function ProjectTopBar({
         <button
           type="button"
           onClick={onOpenMobileNav}
-          className="flex h-8 w-8 items-center justify-center rounded text-foreground-muted hover:bg-inset hover:text-foreground md:hidden"
+          className="flex h-11 w-11 items-center justify-center rounded text-foreground-muted hover:bg-inset hover:text-foreground md:hidden"
           aria-label="Open navigation menu"
         >
           <Icon name="overview" size={18} />

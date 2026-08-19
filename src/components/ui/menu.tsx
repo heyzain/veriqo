@@ -39,9 +39,10 @@ export type MenuItemProps = React.ComponentPropsWithoutRef<
 export const MenuItem = React.forwardRef<
   React.ComponentRef<typeof RadixDropdownMenu.Item>,
   MenuItemProps
->(({ className, icon, destructive, children, ...props }, ref) => (
+>(({ className, icon, destructive, children, asChild, ...props }, ref) => (
   <RadixDropdownMenu.Item
     ref={ref}
+    asChild={asChild}
     className={cn(
       "flex cursor-pointer items-center gap-2 rounded-xs px-2.5 py-2 text-body outline-none",
       destructive ? "text-fail" : "text-foreground",
@@ -51,8 +52,19 @@ export const MenuItem = React.forwardRef<
     )}
     {...props}
   >
-    {icon ? <Icon name={icon} size={16} /> : null}
-    {children}
+    {/* `asChild` hands the whole element to Radix's Slot, which requires
+        exactly one child — injecting an icon (or even a `null` placeholder
+        for a missing one) alongside `children` breaks that. Only render the
+        icon wrapper in normal (non-Slot) mode; an `asChild` caller owns its
+        own icon inside the single child it passes in. */}
+    {asChild ? (
+      children
+    ) : (
+      <>
+        {icon ? <Icon name={icon} size={16} /> : null}
+        {children}
+      </>
+    )}
   </RadixDropdownMenu.Item>
 ));
 MenuItem.displayName = "MenuItem";

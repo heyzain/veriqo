@@ -15,7 +15,7 @@ export async function generateMetadata({
   params: Promise<{ slug: string }>;
 }): Promise<Metadata> {
   const [user, { slug }] = await Promise.all([getCurrentUser(), params]);
-  const project = user ? getProjectForOwner(slug, user) : null;
+  const project = user ? await getProjectForOwner(slug, user) : null;
   return { title: project ? `${project.name} · New Test Run` : "New Test Run" };
 }
 
@@ -31,11 +31,14 @@ export default async function NewTestRunPage({
 
   const { slug } = await params;
   const query = await searchParams;
-  const project = getProjectForOwner(slug, user);
+  const project = await getProjectForOwner(slug, user);
   if (!project) notFound();
 
-  const features = listFeaturesForProject(project);
-  const testCases = listTestCasesForProject(project).filter((tc) => tc.status !== "archived");
+  const [features, allTestCases] = await Promise.all([
+    listFeaturesForProject(project),
+    listTestCasesForProject(project),
+  ]);
+  const testCases = allTestCases.filter((tc) => tc.status !== "archived");
   const preselectedTestCaseIds =
     typeof query.testCaseIds === "string" ? query.testCaseIds.split(",").filter(Boolean) : [];
 

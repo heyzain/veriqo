@@ -29,8 +29,8 @@ export async function generateMetadata({
   params: Promise<{ slug: string; runId: string }>;
 }): Promise<Metadata> {
   const [user, { slug, runId }] = await Promise.all([getCurrentUser(), params]);
-  const project = user ? getProjectForOwner(slug, user) : null;
-  const detail = project ? getTestRunDetail(project, runId) : null;
+  const project = user ? await getProjectForOwner(slug, user) : null;
+  const detail = project ? await getTestRunDetail(project, runId) : null;
   return { title: detail ? `${detail.testRun.publicId} · ${detail.testRun.name}` : "Test Run" };
 }
 
@@ -43,17 +43,20 @@ export default async function TestRunDetailPage({
   if (!user) redirect("/sign-in");
 
   const { slug, runId } = await params;
-  const project = getProjectForOwner(slug, user);
+  const project = await getProjectForOwner(slug, user);
   if (!project) notFound();
 
-  const detail = getTestRunDetail(project, runId);
+  const detail = await getTestRunDetail(project, runId);
   if (!detail) notFound();
 
   const { testRun, items, progress, nextIncompleteTestCasePublicId } = detail;
-  const features = listFeaturesForProject(project);
-  const activity = getTestRunActivity(project, testRun);
+  const [features, activity, issues] = await Promise.all([
+    listFeaturesForProject(project),
+    getTestRunActivity(project, testRun),
+    listIssuesForProject(project),
+  ]);
   const statusDef = testRunStatuses[testRun.status];
-  const issueByOriginResultId = new Map(listIssuesForProject(project).map((issue) => [issue.originResultId, issue.publicId]));
+  const issueByOriginResultId = new Map(issues.map((issue) => [issue.originResultId, issue.publicId]));
 
   const needsReviewCount = items.filter((item) => item.result.needsHumanReview).length;
   const isClaudeAssistedInProgress =

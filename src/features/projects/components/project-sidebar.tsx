@@ -84,7 +84,7 @@ export function ProjectSidebar({
             <button
               type="button"
               onClick={onCloseMobileDrawer}
-              className="flex h-7 w-7 items-center justify-center rounded text-foreground-muted hover:bg-inset hover:text-foreground transition-fast"
+              className="flex h-11 w-11 items-center justify-center rounded text-foreground-muted hover:bg-inset hover:text-foreground transition-fast"
               aria-label="Close navigation"
             >
               <Icon name="close" size={16} />
@@ -211,16 +211,30 @@ export function ProjectSidebar({
               <span className="text-mono-sm text-foreground-muted text-[11px]">{user.email}</span>
             </MenuLabel>
             <MenuSeparator />
-            <MenuItem className="p-0">
-              <form action={signOutAction} className="w-full">
-                <button
-                  type="submit"
-                  className="flex w-full items-center gap-2 px-2.5 py-2 text-left cursor-pointer text-foreground-secondary hover:text-foreground"
-                >
-                  <Icon name="close" size={15} />
-                  <span>Sign out</span>
-                </button>
-              </form>
+            <MenuItem asChild>
+              <Link href="/account">
+                <Icon name="settings" size={15} />
+                <span>Account settings</span>
+              </Link>
+            </MenuItem>
+            <MenuSeparator />
+            {/* `onSelect` calling the Server Action directly — not a nested
+                `<form><button type="submit">` — because Radix's Item closes
+                the menu (and its portal) as part of handling the same click
+                that would otherwise need to reach the nested button's own
+                native submit; that race can drop the submission entirely
+                (confirmed via Playwright: the action never ran). `onSelect`
+                is Radix's own "activate this item" hook, so it isn't
+                subject to that race. `signOutAction` takes no FormData, so
+                it's directly callable here. */}
+            <MenuItem
+              className="text-foreground-secondary hover:text-foreground"
+              onSelect={() => {
+                void signOutAction();
+              }}
+            >
+              <Icon name="close" size={15} />
+              <span>Sign out</span>
             </MenuItem>
           </MenuContent>
         </Menu>

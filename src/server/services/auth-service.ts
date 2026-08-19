@@ -5,6 +5,7 @@ import { randomUUID } from "node:crypto";
 import { hashPassword, verifyPassword } from "@/lib/auth/password";
 import { checkRateLimit } from "@/lib/auth/rate-limit";
 import { createSession, destroySession, getSessionUserId } from "@/lib/auth/session";
+import { logger } from "@/lib/logging/logger";
 import { findInviteByToken, saveInvite } from "@/server/repositories/invite-repository";
 import { ensureSeeded } from "@/server/repositories/seed";
 import {
@@ -38,9 +39,15 @@ export async function signUp(input: {
   email: string;
   password: string;
 }): Promise<ServiceResult<{ user: PublicUser; verificationToken: AuthToken }>> {
-  ensureSeeded();
+  await ensureSeeded();
 
-  if (findUserByEmail(input.email)) {
+  const rateLimitKey = `sign-up:${input.email.toLowerCase()}`;
+  const rateLimit = checkRateLimit(rateLimitKey, { limit: 5, windowMs: 15 * 60 * 1000 });
+  if (!rateLimit.allowed) {
+    return fail(`Too many attempts. Try again in ${Math.ceil(rateLimit.retryAfterSeconds / 60)} minute(s).`);
+  }
+
+  if (await findUserByEmail(input.email)) {
     return fail("An account with this email already exists. Try signing in instead.");
   }
 
@@ -52,10 +59,10 @@ export async function signUp(input: {
     emailVerified: false,
     createdAt: new Date().toISOString(),
   };
-  createUser(user);
+  await createUser(user);
   await createSession(user.id);
 
-  const verificationToken = issueToken(user.id, "email-verification");
+  const verificationToken = await issueToken(user.id, "email-verification");
   return ok({ user: toPublicUser(user), verificationToken });
 }
 
@@ -63,22 +70,25 @@ export async function signIn(input: {
   email: string;
   password: string;
 }): Promise<ServiceResult<{ user: PublicUser }>> {
-  ensureSeeded();
+  await ensureSeeded();
 
   const rateLimitKey = `sign-in:${input.email.toLowerCase()}`;
   const rateLimit = checkRateLimit(rateLimitKey, { limit: 5, windowMs: 15 * 60 * 1000 });
   if (!rateLimit.allowed) {
+    logger.warn("sign-in rate-limited", { email: input.email.toLowerCase() });
     return fail(
       `Too many sign-in attempts. Try again in ${Math.ceil(rateLimit.retryAfterSeconds / 60)} minute(s).`,
     );
   }
 
-  const user = findUserByEmail(input.email);
+  const user = await findUserByEmail(input.email);
   const passwordMatches = user ? verifyPassword(input.password, user.passwordHash) : false;
 
   // Deliberately identical messaging whether the email is unknown or the
-  // password is wrong — avoids confirming which accounts exist.
+  // password is wrong — avoids confirming which accounts exist. The log
+  // context mirrors that: which case it was, never the attempted password.
   if (!user || !passwordMatches) {
+    logger.warn("sign-in failed", { email: input.email.toLowerCase(), reason: user ? "wrong-password" : "unknown-email" });
     return fail("That email and password combination doesn't match an account.");
   }
 
@@ -93,7 +103,7 @@ export async function signOut(): Promise<void> {
 export async function requestPasswordReset(
   email: string,
 ): Promise<ServiceResult<{ resetToken: AuthToken | null }>> {
-  ensureSeeded();
+  await ensureSeeded();
 
   const rateLimitKey = `reset-request:${email.toLowerCase()}`;
   const rateLimit = checkRateLimit(rateLimitKey, { limit: 3, windowMs: 15 * 60 * 1000 });
@@ -103,17 +113,17 @@ export async function requestPasswordReset(
     );
   }
 
-  const user = findUserByEmail(email);
+  const user = await findUserByEmail(email);
   // Always succeed from the caller's point of view — never reveal whether
   // the email is registered.
   if (!user) return ok({ resetToken: null });
 
-  const resetToken = issueToken(user.id, "password-reset");
+  const resetToken = await issueToken(user.id, "password-reset");
   return ok({ resetToken });
 }
 
-export function peekPasswordResetToken(token: string): AuthToken | null {
-  ensureSeeded();
+export async function peekPasswordResetToken(token: string): Promise<AuthToken | null> {
+  await ensureSeeded();
   return peekToken(token, "password-reset");
 }
 
@@ -121,54 +131,54 @@ export async function resetPassword(input: {
   token: string;
   password: string;
 }): Promise<ServiceResult<{ user: PublicUser }>> {
-  ensureSeeded();
+  await ensureSeeded();
 
-  const token = consumeToken(input.token, "password-reset");
+  const token = await consumeToken(input.token, "password-reset");
   if (!token) {
     return fail("This reset link is invalid or has expired. Request a new one.");
   }
 
-  const user = findUserById(token.userId);
+  const user = await findUserById(token.userId);
   if (!user) return fail("This reset link is invalid or has expired. Request a new one.");
 
   const updated: User = { ...user, passwordHash: hashPassword(input.password) };
-  updateUser(updated);
+  await updateUser(updated);
   await createSession(updated.id);
 
   return ok({ user: toPublicUser(updated) });
 }
 
-export function verifyEmail(token: string): ServiceResult<{ user: PublicUser }> {
-  ensureSeeded();
+export async function verifyEmail(token: string): Promise<ServiceResult<{ user: PublicUser }>> {
+  await ensureSeeded();
 
-  const consumed = consumeToken(token, "email-verification");
+  const consumed = await consumeToken(token, "email-verification");
   if (!consumed) {
     return fail("This verification link is invalid or has expired.");
   }
 
-  const user = findUserById(consumed.userId);
+  const user = await findUserById(consumed.userId);
   if (!user) return fail("This verification link is invalid or has expired.");
 
   const updated: User = { ...user, emailVerified: true };
-  updateUser(updated);
+  await updateUser(updated);
   return ok({ user: toPublicUser(updated) });
 }
 
 export async function resendVerificationEmail(
   userId: string,
 ): Promise<ServiceResult<{ verificationToken: AuthToken }>> {
-  ensureSeeded();
+  await ensureSeeded();
 
-  const user = findUserById(userId);
+  const user = await findUserById(userId);
   if (!user) return fail("Sign in again to resend a verification email.");
   if (user.emailVerified) return fail("This email is already verified.");
 
-  return ok({ verificationToken: issueToken(user.id, "email-verification") });
+  return ok({ verificationToken: await issueToken(user.id, "email-verification") });
 }
 
-export function getInvite(token: string) {
-  ensureSeeded();
-  const invite = findInviteByToken(token);
+export async function getInvite(token: string) {
+  await ensureSeeded();
+  const invite = await findInviteByToken(token);
   if (!invite) return null;
   if (invite.acceptedAt) return { ...invite, status: "accepted" as const };
   if (invite.expiresAt < Date.now()) return { ...invite, status: "expired" as const };
@@ -180,14 +190,20 @@ export async function acceptInvite(input: {
   name: string;
   password: string;
 }): Promise<ServiceResult<{ user: PublicUser }>> {
-  ensureSeeded();
+  await ensureSeeded();
 
-  const invite = findInviteByToken(input.token);
+  const rateLimitKey = `accept-invite:${input.token}`;
+  const rateLimit = checkRateLimit(rateLimitKey, { limit: 8, windowMs: 15 * 60 * 1000 });
+  if (!rateLimit.allowed) {
+    return fail(`Too many attempts. Try again in ${Math.ceil(rateLimit.retryAfterSeconds / 60)} minute(s).`);
+  }
+
+  const invite = await findInviteByToken(input.token);
   if (!invite || invite.acceptedAt || invite.expiresAt < Date.now()) {
     return fail("This invite is invalid or has expired. Ask for a new one.");
   }
 
-  if (findUserByEmail(invite.email)) {
+  if (await findUserByEmail(invite.email)) {
     return fail("An account with this email already exists. Try signing in instead.");
   }
 
@@ -199,18 +215,18 @@ export async function acceptInvite(input: {
     emailVerified: true, // Accepting an emailed invite is itself a proof of email ownership.
     createdAt: new Date().toISOString(),
   };
-  createUser(user);
-  saveInvite({ ...invite, acceptedAt: Date.now() });
+  await createUser(user);
+  await saveInvite({ ...invite, acceptedAt: Date.now() });
   await createSession(user.id);
 
   return ok({ user: toPublicUser(user) });
 }
 
 export async function getCurrentUser(): Promise<PublicUser | null> {
-  ensureSeeded();
+  await ensureSeeded();
   const userId = await getSessionUserId();
   if (!userId) return null;
 
-  const user = findUserById(userId);
+  const user = await findUserById(userId);
   return user ? toPublicUser(user) : null;
 }

@@ -34,7 +34,7 @@ function fail<T>(error: string): TestRunServiceResult<T> {
   return { ok: false, error };
 }
 
-function activity(
+async function activity(
   projectId: string,
   actorType: ActivityEvent["actorType"],
   actorName: string,
@@ -42,8 +42,8 @@ function activity(
   entityType: string,
   entityId: string,
   extra?: Partial<Pick<ActivityEvent, "relatedEntities" | "metadata">>,
-): void {
-  recordActivity({
+): Promise<void> {
+  await recordActivity({
     id: randomUUID(),
     projectId,
     actorType,
@@ -56,10 +56,9 @@ function activity(
   });
 }
 
-export function listTestRunsForProject(project: Project): TestRun[] {
-  return repoListTestRunsForProject(project.id).sort(
-    (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
-  );
+export async function listTestRunsForProject(project: Project): Promise<TestRun[]> {
+  const runs = await repoListTestRunsForProject(project.id);
+  return runs.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 }
 
 export type RunProgress = {
@@ -79,11 +78,14 @@ export function computeRunProgress(results: readonly TestResult[]): RunProgress 
 
 export type TestRunSummary = { testRun: TestRun; progress: RunProgress };
 
-export function listTestRunsWithProgress(project: Project): TestRunSummary[] {
-  return listTestRunsForProject(project).map((testRun) => ({
-    testRun,
-    progress: computeRunProgress(listTestResultsForRun(testRun.id)),
-  }));
+export async function listTestRunsWithProgress(project: Project): Promise<TestRunSummary[]> {
+  const runs = await listTestRunsForProject(project);
+  return Promise.all(
+    runs.map(async (testRun) => ({
+      testRun,
+      progress: computeRunProgress(await listTestResultsForRun(testRun.id)),
+    })),
+  );
 }
 
 export type TestRunItem = { testCase: TestCase; result: TestResult };
@@ -96,12 +98,14 @@ export type TestRunDetail = {
   nextIncompleteTestCasePublicId: string | null;
 };
 
-export function getTestRunDetail(project: Project, publicId: string): TestRunDetail | null {
-  const testRun = findTestRunByPublicId(project.id, publicId);
+export async function getTestRunDetail(project: Project, publicId: string): Promise<TestRunDetail | null> {
+  const testRun = await findTestRunByPublicId(project.id, publicId);
   if (!testRun) return null;
 
-  const allTestCases = listTestCasesForProject(project.id);
-  const results = listTestResultsForRun(testRun.id);
+  const [allTestCases, results] = await Promise.all([
+    listTestCasesForProject(project.id),
+    listTestResultsForRun(testRun.id),
+  ]);
 
   const items: TestRunItem[] = [];
   for (const testCaseId of testRun.selectedTestCaseIds) {
@@ -137,17 +141,17 @@ export type CreateTestRunInput = {
   executionMode?: "manual" | "claudeAssisted";
 };
 
-export function createTestRun(
+export async function createTestRun(
   project: Project,
   input: CreateTestRunInput,
   actorName: string,
-): TestRunServiceResult<{ testRun: TestRun; project: Project }> {
+): Promise<TestRunServiceResult<{ testRun: TestRun; project: Project }>> {
   const seen = new Set<string>();
   const resolvedCases: TestCase[] = [];
   for (const publicId of input.testCaseIds) {
     if (seen.has(publicId)) continue;
     seen.add(publicId);
-    const testCase = findTestCaseByPublicId(project.id, publicId);
+    const testCase = await findTestCaseByPublicId(project.id, publicId);
     if (!testCase) return fail(`Unknown test case "${publicId}".`);
     if (testCase.status === "archived") return fail(`${publicId} is archived and can't be added to a run.`);
     resolvedCases.push(testCase);
@@ -157,7 +161,7 @@ export function createTestRun(
   const now = new Date().toISOString();
   const testRun: TestRun = {
     id: randomUUID(),
-    publicId: nextTestRunPublicId(input.publicIdPrefix ?? "RUN", testRunPublicIds(project.id)),
+    publicId: nextTestRunPublicId(input.publicIdPrefix ?? "RUN", await testRunPublicIds(project.id)),
     projectId: project.id,
     name: input.name.trim(),
     status: "planned",
@@ -173,10 +177,10 @@ export function createTestRun(
     createdAt: now,
     updatedAt: now,
   };
-  saveTestRun(testRun);
+  await saveTestRun(testRun);
 
   for (const testCase of resolvedCases) {
-    saveTestResult({
+    await saveTestResult({
       id: randomUUID(),
       testRunId: testRun.id,
       testCaseId: testCase.id,
@@ -188,9 +192,9 @@ export function createTestRun(
     });
   }
 
-  const updatedProject = advanceSetupStep(project, 6);
+  const updatedProject = await advanceSetupStep(project, 6);
 
-  activity(
+  await activity(
     project.id,
     "human",
     actorName,
@@ -201,7 +205,7 @@ export function createTestRun(
   );
 
   if (updatedProject !== project) {
-    activity(project.id, "system", "Veriqo", "marked the first test run created", "testRun", testRun.id);
+    await activity(project.id, "system", "Veriqo", "marked the first test run created", "testRun", testRun.id);
   }
 
   return ok({ testRun, project: updatedProject });
@@ -209,13 +213,13 @@ export function createTestRun(
 
 // ---- Run lifecycle ----
 
-export function startTestRun(
+export async function startTestRun(
   project: Project,
   publicId: string,
   actorName: string,
   actorType: ActivityEvent["actorType"] = "human",
-): TestRunServiceResult<{ testRun: TestRun }> {
-  const existing = findTestRunByPublicId(project.id, publicId);
+): Promise<TestRunServiceResult<{ testRun: TestRun }>> {
+  const existing = await findTestRunByPublicId(project.id, publicId);
   if (!existing) return fail("Test run not found.");
   if (existing.status === "inProgress") return ok({ testRun: existing });
   if (existing.status !== "planned" && existing.status !== "paused") {
@@ -230,9 +234,9 @@ export function startTestRun(
     startedAt: existing.startedAt ?? now,
     updatedAt: now,
   };
-  saveTestRun(updated);
+  await saveTestRun(updated);
 
-  activity(
+  await activity(
     project.id,
     actorType,
     actorName,
@@ -244,21 +248,21 @@ export function startTestRun(
   return ok({ testRun: updated });
 }
 
-export function pauseTestRun(
+export async function pauseTestRun(
   project: Project,
   publicId: string,
   actorName: string,
-): TestRunServiceResult<{ testRun: TestRun }> {
-  const existing = findTestRunByPublicId(project.id, publicId);
+): Promise<TestRunServiceResult<{ testRun: TestRun }>> {
+  const existing = await findTestRunByPublicId(project.id, publicId);
   if (!existing) return fail("Test run not found.");
   if (existing.status === "paused") return ok({ testRun: existing });
   if (existing.status !== "inProgress") return fail(`${publicId} isn't in progress.`);
 
   const now = new Date().toISOString();
   const updated: TestRun = { ...existing, status: "paused", updatedAt: now };
-  saveTestRun(updated);
+  await saveTestRun(updated);
 
-  activity(project.id, "human", actorName, `paused ${updated.publicId}`, "testRun", updated.id);
+  await activity(project.id, "human", actorName, `paused ${updated.publicId}`, "testRun", updated.id);
 
   return ok({ testRun: updated });
 }
@@ -291,18 +295,18 @@ export type SubmitTestResultInput = {
  * author, same as any other re-submission (Phase 8, "Human review of
  * uncertain results").
  */
-export function submitTestResult(
+export async function submitTestResult(
   project: Project,
   runPublicId: string,
   testCasePublicId: string,
   input: SubmitTestResultInput,
   actorName: string,
   actorType: ActivityEvent["actorType"] = "human",
-): TestRunServiceResult<{ testRun: TestRun; result: TestResult }> {
-  const testRun = findTestRunByPublicId(project.id, runPublicId);
+): Promise<TestRunServiceResult<{ testRun: TestRun; result: TestResult }>> {
+  const testRun = await findTestRunByPublicId(project.id, runPublicId);
   if (!testRun) return fail("Test run not found.");
 
-  const testCase = findTestCaseByPublicId(project.id, testCasePublicId);
+  const testCase = await findTestCaseByPublicId(project.id, testCasePublicId);
   if (!testCase) return fail("Test case not found.");
   if (!testRun.selectedTestCaseIds.includes(testCase.id)) {
     return fail(`${testCasePublicId} isn't part of ${runPublicId}.`);
@@ -312,7 +316,7 @@ export function submitTestResult(
     return fail("Describe what happened before recording a fail, partial, or blocked result.");
   }
 
-  const existingResult = findTestResult(testRun.id, testCase.id);
+  const existingResult = await findTestResult(testRun.id, testCase.id);
   if (!existingResult) return fail("Result record missing for this test case — the run may be corrupted.");
 
   // Idempotent replay (04-CONFIG-BLUEPRINT.md, "Use idempotency keys for MCP
@@ -340,14 +344,15 @@ export function submitTestResult(
     recordedAt: now,
     updatedAt: now,
   };
-  saveTestResult(updatedResult);
+  await saveTestResult(updatedResult);
 
   let updatedRun: TestRun =
     testRun.status === "planned" || testRun.status === "paused"
       ? { ...testRun, status: "inProgress", startedAt: testRun.startedAt ?? now, updatedAt: now }
       : testRun;
 
-  const allResults = listTestResultsForRun(testRun.id).map((r) => (r.id === updatedResult.id ? updatedResult : r));
+  const resultsForRun = await listTestResultsForRun(testRun.id);
+  const allResults = resultsForRun.map((r) => (r.id === updatedResult.id ? updatedResult : r));
   const everyCaseHasResult = allResults.every((r) => r.status !== "notRun");
   const wasCompleteBefore = updatedRun.status === "completed" || updatedRun.status === "needsAttention";
 
@@ -359,9 +364,9 @@ export function submitTestResult(
     const hasFailure = allResults.some((r) => r.status === "fail");
     updatedRun = { ...updatedRun, status: hasFailure ? "needsAttention" : "completed", completedAt: now, updatedAt: now };
   }
-  if (updatedRun !== testRun) saveTestRun(updatedRun);
+  if (updatedRun !== testRun) await saveTestRun(updatedRun);
 
-  activity(
+  await activity(
     project.id,
     actorType,
     actorName,
@@ -378,7 +383,7 @@ export function submitTestResult(
   );
 
   if (everyCaseHasResult && !wasCompleteBefore) {
-    activity(
+    await activity(
       project.id,
       "system",
       "Veriqo",
@@ -402,17 +407,17 @@ export function submitTestResult(
  * {human}" (Phase 8 acceptance: "Human review is clearly distinct from AI
  * submission").
  */
-export function approveClaudeResult(
+export async function approveClaudeResult(
   project: Project,
   runPublicId: string,
   testCasePublicId: string,
   actorName: string,
-): TestRunServiceResult<{ result: TestResult }> {
-  const testRun = findTestRunByPublicId(project.id, runPublicId);
+): Promise<TestRunServiceResult<{ result: TestResult }>> {
+  const testRun = await findTestRunByPublicId(project.id, runPublicId);
   if (!testRun) return fail("Test run not found.");
-  const testCase = findTestCaseByPublicId(project.id, testCasePublicId);
+  const testCase = await findTestCaseByPublicId(project.id, testCasePublicId);
   if (!testCase) return fail("Test case not found.");
-  const existing = findTestResult(testRun.id, testCase.id);
+  const existing = await findTestResult(testRun.id, testCase.id);
   if (!existing) return fail("Result not found.");
   if (existing.recordedBySource !== "claude") return fail("Only a Claude-submitted result can be approved.");
   if (!existing.needsHumanReview) return ok({ result: existing });
@@ -426,9 +431,9 @@ export function approveClaudeResult(
     reviewedAt: now,
     updatedAt: now,
   };
-  saveTestResult(updated);
+  await saveTestResult(updated);
 
-  activity(
+  await activity(
     project.id,
     "human",
     actorName,
@@ -447,17 +452,17 @@ export function approveClaudeResult(
  * the activity ledger even though the live record reverts to the same
  * neutral placeholder `createTestRun` seeds every case with.
  */
-export function rejectClaudeResult(
+export async function rejectClaudeResult(
   project: Project,
   runPublicId: string,
   testCasePublicId: string,
   actorName: string,
-): TestRunServiceResult<{ testRun: TestRun; result: TestResult }> {
-  const testRun = findTestRunByPublicId(project.id, runPublicId);
+): Promise<TestRunServiceResult<{ testRun: TestRun; result: TestResult }>> {
+  const testRun = await findTestRunByPublicId(project.id, runPublicId);
   if (!testRun) return fail("Test run not found.");
-  const testCase = findTestCaseByPublicId(project.id, testCasePublicId);
+  const testCase = await findTestCaseByPublicId(project.id, testCasePublicId);
   if (!testCase) return fail("Test case not found.");
-  const existing = findTestResult(testRun.id, testCase.id);
+  const existing = await findTestResult(testRun.id, testCase.id);
   if (!existing) return fail("Result not found.");
   if (existing.recordedBySource !== "claude") return fail("Only a Claude-submitted result can be rejected.");
 
@@ -477,16 +482,16 @@ export function rejectClaudeResult(
     recordedAt: now,
     updatedAt: now,
   };
-  saveTestResult(reverted);
+  await saveTestResult(reverted);
 
   // A case reverting to notRun means the run can no longer be "done".
   let updatedRun = testRun;
   if (testRun.status === "completed" || testRun.status === "needsAttention") {
     updatedRun = { ...testRun, status: "inProgress", completedAt: undefined, updatedAt: now };
-    saveTestRun(updatedRun);
+    await saveTestRun(updatedRun);
   }
 
-  activity(
+  await activity(
     project.id,
     "human",
     actorName,
@@ -503,20 +508,20 @@ export function rejectClaudeResult(
 
 export type CompleteTestRunSummary = { progress: RunProgress; needsReviewCount: number };
 
-export function completeTestRunFromClaude(
+export async function completeTestRunFromClaude(
   project: Project,
   runPublicId: string,
   summaryNote: string | undefined,
   actorName: string,
-): TestRunServiceResult<CompleteTestRunSummary> {
-  const testRun = findTestRunByPublicId(project.id, runPublicId);
+): Promise<TestRunServiceResult<CompleteTestRunSummary>> {
+  const testRun = await findTestRunByPublicId(project.id, runPublicId);
   if (!testRun) return fail("Test run not found.");
 
-  const results = listTestResultsForRun(testRun.id);
+  const results = await listTestResultsForRun(testRun.id);
   const progress = computeRunProgress(results);
   const needsReviewCount = results.filter((r) => r.needsHumanReview).length;
 
-  activity(
+  await activity(
     project.id,
     "claude",
     actorName,
@@ -531,8 +536,9 @@ export function completeTestRunFromClaude(
 
 // ---- Activity for the run detail page ----
 
-export function getTestRunActivity(project: Project, testRun: TestRun): ActivityEvent[] {
-  return listActivityForProject(project.id).filter(
+export async function getTestRunActivity(project: Project, testRun: TestRun): Promise<ActivityEvent[]> {
+  const allActivity = await listActivityForProject(project.id);
+  return allActivity.filter(
     (event) =>
       (event.entityType === "testRun" || event.entityType === "testResult") &&
       (event.entityId === testRun.id ||
@@ -547,12 +553,17 @@ export type TestRunActivitySince = { events: ActivityEvent[] };
  * `issue-service.getIssueActivitySince`. Backs the Claude-assisted
  * execution panel's live poll (Phase 8).
  */
-export function getTestRunActivitySince(project: Project, publicId: string, sinceIso: string): TestRunActivitySince {
-  const testRun = findTestRunByPublicId(project.id, publicId);
+export async function getTestRunActivitySince(
+  project: Project,
+  publicId: string,
+  sinceIso: string,
+): Promise<TestRunActivitySince> {
+  const testRun = await findTestRunByPublicId(project.id, publicId);
   if (!testRun) return { events: [] };
 
   const since = new Date(sinceIso).getTime();
-  const events = getTestRunActivity(project, testRun)
+  const runActivity = await getTestRunActivity(project, testRun);
+  const events = runActivity
     .filter((event) => new Date(event.createdAt).getTime() > since)
     .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())
     .slice(-30);

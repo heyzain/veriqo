@@ -23,29 +23,33 @@ export type ActivityEntityRef = {
   href: string;
 };
 
-export function resolveActivityEntity(project: Project, entityType: string, entityId: string): ActivityEntityRef | null {
+export async function resolveActivityEntity(
+  project: Project,
+  entityType: string,
+  entityId: string,
+): Promise<ActivityEntityRef | null> {
   switch (entityType) {
     case "feature": {
-      const feature = findFeatureById(project.id, entityId);
+      const feature = await findFeatureById(project.id, entityId);
       return feature ? { label: feature.publicId, href: `/projects/${project.slug}/features/${feature.publicId}` } : null;
     }
     case "testCase": {
-      const testCase = findTestCaseById(project.id, entityId);
+      const testCase = await findTestCaseById(project.id, entityId);
       return testCase ? { label: testCase.publicId, href: `/projects/${project.slug}/test-cases` } : null;
     }
     case "testRun": {
-      const testRun = findTestRunById(project.id, entityId);
+      const testRun = await findTestRunById(project.id, entityId);
       return testRun ? { label: testRun.publicId, href: `/projects/${project.slug}/test-runs/${testRun.publicId}` } : null;
     }
     case "testResult": {
       // No standalone result page — link to the run it belongs to.
-      const result = findTestResultById(project.id, entityId);
+      const result = await findTestResultById(project.id, entityId);
       if (!result) return null;
-      const testRun = findTestRunById(project.id, result.testRunId);
+      const testRun = await findTestRunById(project.id, result.testRunId);
       return testRun ? { label: testRun.publicId, href: `/projects/${project.slug}/test-runs/${testRun.publicId}` } : null;
     }
     case "issue": {
-      const issue = findIssueById(project.id, entityId);
+      const issue = await findIssueById(project.id, entityId);
       return issue ? { label: issue.publicId, href: `/projects/${project.slug}/issues/${issue.publicId}` } : null;
     }
     case "project":

@@ -23,7 +23,7 @@ export async function generateMetadata({
   params: Promise<{ slug: string }>;
 }): Promise<Metadata> {
   const [user, { slug }] = await Promise.all([getCurrentUser(), params]);
-  const records = user ? getProjectRecords(slug, user) : null;
+  const records = user ? await getProjectRecords(slug, user) : null;
   return { title: records ? `${records.project.name} · Test Cases` : "Test Cases" };
 }
 
@@ -49,11 +49,11 @@ export default async function ProjectTestCasesPage({
 
   const { slug } = await params;
   const query = await searchParams;
-  const records = getProjectRecords(slug, user);
+  const records = await getProjectRecords(slug, user);
   if (!records) notFound();
 
   const { project, features } = records;
-  const allTestCases = listTestCasesForProject(project);
+  const allTestCases = await listTestCasesForProject(project);
   const approvedFeatures = features.filter((f) => f.status === "approved");
 
   const statusFilter = typeof query.status === "string" ? query.status : "";

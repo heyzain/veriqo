@@ -21,12 +21,12 @@ export default async function ProjectLayout({
   if (!user) redirect("/sign-in");
 
   const { slug } = await params;
-  const project = getProjectForOwner(slug, user);
+  const project = await getProjectForOwner(slug, user);
   if (!project) notFound();
 
-  const { active: activeProjects } = listProjects(user);
-  const lastActivity = getLastActivityForProject(project.id);
-  const mcpStatus = getMcpConnectionSnapshot(project).status;
+  const { active: activeProjects } = await listProjects(user);
+  const lastActivity = await getLastActivityForProject(project.id);
+  const mcpStatus = (await getMcpConnectionSnapshot(project)).status;
 
   return (
     <ProjectShell

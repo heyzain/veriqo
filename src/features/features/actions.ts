@@ -31,7 +31,7 @@ function safeRedirectTarget(target: string, fallback: string): string {
 async function requireProject(projectSlug: string) {
   const user = await getCurrentUser();
   if (!user) redirect("/sign-in");
-  const project = getProjectForOwner(projectSlug, user);
+  const project = await getProjectForOwner(projectSlug, user);
   if (!project) redirect("/projects");
   return { user, project };
 }
@@ -42,7 +42,7 @@ export async function approveFeatureAction(formData: FormData): Promise<void> {
   const redirectTo = String(formData.get("redirectTo") ?? "");
   const { user, project } = await requireProject(projectSlug);
 
-  approveFeature(project, featureId, user.name);
+  await approveFeature(project, featureId, user.name);
   redirect(safeRedirectTarget(redirectTo, `/projects/${projectSlug}/features`));
 }
 
@@ -52,7 +52,7 @@ export async function archiveFeatureAction(formData: FormData): Promise<void> {
   const redirectTo = String(formData.get("redirectTo") ?? "");
   const { user, project } = await requireProject(projectSlug);
 
-  archiveFeature(project, featureId, user.name);
+  await archiveFeature(project, featureId, user.name);
   redirect(safeRedirectTarget(redirectTo, `/projects/${projectSlug}/features`));
 }
 
@@ -62,7 +62,7 @@ export async function restoreFeatureAction(formData: FormData): Promise<void> {
   const redirectTo = String(formData.get("redirectTo") ?? "");
   const { user, project } = await requireProject(projectSlug);
 
-  restoreFeature(project, featureId, user.name);
+  await restoreFeature(project, featureId, user.name);
   redirect(safeRedirectTarget(redirectTo, `/projects/${projectSlug}/features`));
 }
 
@@ -72,7 +72,7 @@ export async function bulkApproveFeaturesAction(formData: FormData): Promise<voi
   const redirectTo = String(formData.get("redirectTo") ?? "");
   const { user, project } = await requireProject(projectSlug);
 
-  bulkApproveFeatures(project, featureIds, user.name);
+  await bulkApproveFeatures(project, featureIds, user.name);
   redirect(safeRedirectTarget(redirectTo, `/projects/${projectSlug}/features`));
 }
 
@@ -82,7 +82,7 @@ export async function bulkArchiveFeaturesAction(formData: FormData): Promise<voi
   const redirectTo = String(formData.get("redirectTo") ?? "");
   const { user, project } = await requireProject(projectSlug);
 
-  bulkArchiveFeatures(project, featureIds, user.name);
+  await bulkArchiveFeatures(project, featureIds, user.name);
   redirect(safeRedirectTarget(redirectTo, `/projects/${projectSlug}/features`));
 }
 
@@ -95,10 +95,10 @@ export async function bulkArchiveFeaturesAction(formData: FormData): Promise<voi
 export async function requestFeatureRegenerationAction(projectSlug: string, featureId: string): Promise<void> {
   const user = await getCurrentUser();
   if (!user) return;
-  const project = getProjectForOwner(projectSlug, user);
+  const project = await getProjectForOwner(projectSlug, user);
   if (!project) return;
 
-  logFeatureRegenerationRequested(project, featureId, user.name);
+  await logFeatureRegenerationRequested(project, featureId, user.name);
 }
 
 export type EditFeatureValues = {
@@ -127,13 +127,13 @@ export async function editFeatureAction(
 
   const user = await getCurrentUser();
   if (!user) return formErrorState("Your session expired. Sign in again.", values);
-  const project = getProjectForOwner(projectSlug, user);
+  const project = await getProjectForOwner(projectSlug, user);
   if (!project) return formErrorState("Project could not be found.", values);
 
   const parsed = featureEditFormSchema.safeParse(values);
   if (!parsed.success) return fieldErrorsFromZod(parsed.error, values);
 
-  const result = editFeature(
+  const result = await editFeature(
     project,
     featureId,
     {
@@ -165,13 +165,13 @@ export async function mergeFeaturesAction(
 
   const user = await getCurrentUser();
   if (!user) return formErrorState("Your session expired. Sign in again.", values);
-  const project = getProjectForOwner(projectSlug, user);
+  const project = await getProjectForOwner(projectSlug, user);
   if (!project) return formErrorState("Project could not be found.", values);
   if (!values.survivorFeatureId || !values.mergedFeatureId) {
     return formErrorState("Choose which feature to keep and which one to merge in.", values);
   }
 
-  const result = mergeFeatures(project, values.survivorFeatureId, values.mergedFeatureId, user.name);
+  const result = await mergeFeatures(project, values.survivorFeatureId, values.mergedFeatureId, user.name);
   if (!result.ok) return formErrorState(result.error, values);
   return successState(values);
 }
@@ -188,7 +188,7 @@ export async function pollFeatureDiscoveryActivityAction(
 ): Promise<FeatureDiscoveryActivitySince | null> {
   const user = await getCurrentUser();
   if (!user) return null;
-  const project = getProjectForOwner(projectSlug, user);
+  const project = await getProjectForOwner(projectSlug, user);
   if (!project) return null;
   return getFeatureDiscoveryActivitySince(project, sinceIso);
 }

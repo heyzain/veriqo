@@ -22,7 +22,7 @@ Do not build later phases early. Do not replace incomplete UX with placeholder c
 - React Hook Form + Zod
 - TanStack Table for record-heavy views
 - TanStack Query only where server state benefits from it
-- PostgreSQL + Prisma or Drizzle
+- MongoDB + Mongoose
 - Auth.js or a similarly mature authentication solution
 - Vitest + Testing Library
 - Playwright for critical flows

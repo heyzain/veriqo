@@ -13,8 +13,8 @@ export async function generateMetadata({
   params: Promise<{ slug: string; runId: string }>;
 }): Promise<Metadata> {
   const [user, { slug, runId }] = await Promise.all([getCurrentUser(), params]);
-  const project = user ? getProjectForOwner(slug, user) : null;
-  const detail = project ? getTestRunDetail(project, runId) : null;
+  const project = user ? await getProjectForOwner(slug, user) : null;
+  const detail = project ? await getTestRunDetail(project, runId) : null;
   return { title: detail ? `Run ${detail.testRun.publicId} — ${detail.testRun.name}` : "Run test cases" };
 }
 
@@ -27,14 +27,14 @@ export default async function RunExecutionPage({
   if (!user) redirect("/sign-in");
 
   const { slug, runId } = await params;
-  const project = getProjectForOwner(slug, user);
+  const project = await getProjectForOwner(slug, user);
   if (!project) notFound();
 
-  const detail = getTestRunDetail(project, runId);
+  const detail = await getTestRunDetail(project, runId);
   if (!detail || detail.items.length === 0) notFound();
 
   const { testRun, items, progress, nextIncompleteTestCasePublicId } = detail;
-  const features = listFeaturesForProject(project);
+  const features = await listFeaturesForProject(project);
   const startIndex = nextIncompleteTestCasePublicId
     ? Math.max(
         0,

@@ -18,7 +18,7 @@ export async function generateMetadata({
   params: Promise<{ slug: string }>;
 }): Promise<Metadata> {
   const [user, { slug }] = await Promise.all([getCurrentUser(), params]);
-  const records = user ? getProjectRecords(slug, user) : null;
+  const records = user ? await getProjectRecords(slug, user) : null;
   return { title: records ? `${records.project.name} · Analytics` : "Analytics" };
 }
 
@@ -31,7 +31,7 @@ export default async function ProjectAnalyticsPage({
   if (!user) redirect("/sign-in");
 
   const { slug } = await params;
-  const records = getProjectRecords(slug, user);
+  const records = await getProjectRecords(slug, user);
   if (!records) notFound();
 
   const { project } = records;

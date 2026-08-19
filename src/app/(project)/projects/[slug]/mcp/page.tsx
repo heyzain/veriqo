@@ -18,7 +18,7 @@ export async function generateMetadata({
   params: Promise<{ slug: string }>;
 }): Promise<Metadata> {
   const [user, { slug }] = await Promise.all([getCurrentUser(), params]);
-  const project = user ? getProjectForOwner(slug, user) : null;
+  const project = user ? await getProjectForOwner(slug, user) : null;
   return { title: project ? `${project.name} · Claude MCP` : "Claude MCP Setup" };
 }
 
@@ -31,10 +31,10 @@ export default async function ProjectMcpPage({
   if (!user) redirect("/sign-in");
 
   const { slug } = await params;
-  const project = getProjectForOwner(slug, user);
+  const project = await getProjectForOwner(slug, user);
   if (!project) notFound();
 
-  const snapshot = getMcpConnectionSnapshot(project);
+  const snapshot = await getMcpConnectionSnapshot(project);
   const isConnected = snapshot.status === "connected";
 
   return (

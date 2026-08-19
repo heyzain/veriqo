@@ -104,7 +104,14 @@ function healthCheck(project: Project): McpToolOutput {
   };
 }
 
-function getProjectContext(project: Project): McpToolOutput {
+async function getProjectContext(project: Project): Promise<McpToolOutput> {
+  const [features, testCases, testRuns, issues] = await Promise.all([
+    listFeaturesForProject(project.id),
+    listTestCasesForProject(project.id),
+    listTestRunsForProject(project.id),
+    listIssuesForProject(project.id),
+  ]);
+
   return {
     project: {
       publicId: project.publicId,
@@ -120,10 +127,10 @@ function getProjectContext(project: Project): McpToolOutput {
       totalSteps: totalSetupSteps,
     },
     counts: {
-      features: listFeaturesForProject(project.id).length,
-      testCases: listTestCasesForProject(project.id).length,
-      testRuns: listTestRunsForProject(project.id).length,
-      issues: listIssuesForProject(project.id).length,
+      features: features.length,
+      testCases: testCases.length,
+      testRuns: testRuns.length,
+      issues: issues.length,
     },
   };
 }
@@ -148,43 +155,46 @@ function toMcpFeature(feature: Feature, allFeatures: readonly Feature[]): Record
   };
 }
 
-function listFeatures(project: Project, input: unknown): McpToolRunResult {
+async function listFeatures(project: Project, input: unknown): Promise<McpToolRunResult> {
   const parsed = mcpListFeaturesSchema.safeParse(input ?? {});
   if (!parsed.success) return toolFail(parsed.error.issues[0]?.message ?? "Invalid input.");
 
-  const allFeatures = listFeaturesForProject(project.id);
-  const features = listFeaturesForMcp(project, parsed.data.status);
+  const allFeatures = await listFeaturesForProject(project.id);
+  const features = await listFeaturesForMcp(project, parsed.data.status);
   return toolOk({ features: features.map((f) => toMcpFeature(f, allFeatures)) });
 }
 
-function createFeature(project: Project, input: unknown): McpToolRunResult {
+async function createFeature(project: Project, input: unknown): Promise<McpToolRunResult> {
   const parsed = mcpCreateFeatureSchema.safeParse(input);
   if (!parsed.success) return toolFail(parsed.error.issues[0]?.message ?? "Invalid input.");
 
-  const result = createFeatureFromDiscovery(project, parsed.data);
+  const result = await createFeatureFromDiscovery(project, parsed.data);
   if (!result.ok) return toolFail(result.error);
 
-  const allFeatures = listFeaturesForProject(project.id);
+  const allFeatures = await listFeaturesForProject(project.id);
   return toolOk({ feature: toMcpFeature(result.data.feature, allFeatures) });
 }
 
-function updateFeature(project: Project, input: unknown): McpToolRunResult {
+async function updateFeature(project: Project, input: unknown): Promise<McpToolRunResult> {
   const parsed = mcpUpdateFeatureSchema.safeParse(input);
   if (!parsed.success) return toolFail(parsed.error.issues[0]?.message ?? "Invalid input.");
 
   const { featureId, ...fields } = parsed.data;
-  const result = updateFeatureFromDiscovery(project, featureId, fields);
+  const result = await updateFeatureFromDiscovery(project, featureId, fields);
   if (!result.ok) return toolFail(result.error);
 
-  const allFeatures = listFeaturesForProject(project.id);
+  const allFeatures = await listFeaturesForProject(project.id);
   return toolOk({ feature: toMcpFeature(result.data.feature, allFeatures) });
 }
 
 /** `Do not expose database IDs when stable public IDs are appropriate` (04-CONFIG-BLUEPRINT.md). */
-function toMcpTestCase(testCase: TestCase, allFeatures: readonly Feature[]): Record<string, unknown> {
+async function toMcpTestCase(testCase: TestCase, allFeatures: readonly Feature[]): Promise<Record<string, unknown>> {
   const feature = allFeatures.find((f) => f.id === testCase.featureId);
+  const projectTestCases = testCase.possibleDuplicateOfId
+    ? await listTestCasesForProject(testCase.projectId)
+    : [];
   const duplicateOf = testCase.possibleDuplicateOfId
-    ? listTestCasesForProject(testCase.projectId).find((tc) => tc.id === testCase.possibleDuplicateOfId)
+    ? projectTestCases.find((tc) => tc.id === testCase.possibleDuplicateOfId)
     : undefined;
 
   return {
@@ -202,42 +212,44 @@ function toMcpTestCase(testCase: TestCase, allFeatures: readonly Feature[]): Rec
   };
 }
 
-function listTestCases(project: Project, input: unknown): McpToolRunResult {
+async function listTestCases(project: Project, input: unknown): Promise<McpToolRunResult> {
   const parsed = mcpListTestCasesSchema.safeParse(input ?? {});
   if (!parsed.success) return toolFail(parsed.error.issues[0]?.message ?? "Invalid input.");
 
-  const allFeatures = listFeaturesForProject(project.id);
-  const testCases = listTestCasesForMcp(project, parsed.data.status, parsed.data.featureId);
-  return toolOk({ testCases: testCases.map((tc) => toMcpTestCase(tc, allFeatures)) });
+  const allFeatures = await listFeaturesForProject(project.id);
+  const testCases = await listTestCasesForMcp(project, parsed.data.status, parsed.data.featureId);
+  return toolOk({ testCases: await Promise.all(testCases.map((tc) => toMcpTestCase(tc, allFeatures))) });
 }
 
-function createTestCase(project: Project, input: unknown): McpToolRunResult {
+async function createTestCase(project: Project, input: unknown): Promise<McpToolRunResult> {
   const parsed = mcpCreateTestCaseSchema.safeParse(input);
   if (!parsed.success) return toolFail(parsed.error.issues[0]?.message ?? "Invalid input.");
 
-  const result = createTestCaseFromGeneration(project, parsed.data);
+  const result = await createTestCaseFromGeneration(project, parsed.data);
   if (!result.ok) return toolFail(result.error);
 
-  const allFeatures = listFeaturesForProject(project.id);
-  return toolOk({ testCase: toMcpTestCase(result.data.testCase, allFeatures) });
+  const allFeatures = await listFeaturesForProject(project.id);
+  return toolOk({ testCase: await toMcpTestCase(result.data.testCase, allFeatures) });
 }
 
-function updateTestCase(project: Project, input: unknown): McpToolRunResult {
+async function updateTestCase(project: Project, input: unknown): Promise<McpToolRunResult> {
   const parsed = mcpUpdateTestCaseSchema.safeParse(input);
   if (!parsed.success) return toolFail(parsed.error.issues[0]?.message ?? "Invalid input.");
 
   const { testCaseId, ...fields } = parsed.data;
-  const result = updateTestCaseFromGeneration(project, testCaseId, fields);
+  const result = await updateTestCaseFromGeneration(project, testCaseId, fields);
   if (!result.ok) return toolFail(result.error);
 
-  const allFeatures = listFeaturesForProject(project.id);
-  return toolOk({ testCase: toMcpTestCase(result.data.testCase, allFeatures) });
+  const allFeatures = await listFeaturesForProject(project.id);
+  return toolOk({ testCase: await toMcpTestCase(result.data.testCase, allFeatures) });
 }
 
 /** `Do not expose database IDs when stable public IDs are appropriate` (04-CONFIG-BLUEPRINT.md). */
-function toMcpIssue(issue: Issue, project: Project): Record<string, unknown> {
-  const feature = findFeatureById(project.id, issue.featureId);
-  const testCase = findTestCaseById(project.id, issue.testCaseId);
+async function toMcpIssue(issue: Issue, project: Project): Promise<Record<string, unknown>> {
+  const [feature, testCase] = await Promise.all([
+    findFeatureById(project.id, issue.featureId),
+    findTestCaseById(project.id, issue.testCaseId),
+  ]);
 
   return {
     issueId: issue.publicId,
@@ -250,50 +262,50 @@ function toMcpIssue(issue: Issue, project: Project): Record<string, unknown> {
   };
 }
 
-function listIssues(project: Project, input: unknown): McpToolRunResult {
+async function listIssues(project: Project, input: unknown): Promise<McpToolRunResult> {
   const parsed = mcpListIssuesSchema.safeParse(input ?? {});
   if (!parsed.success) return toolFail(parsed.error.issues[0]?.message ?? "Invalid input.");
 
-  const all = listIssuesForProject(project.id);
+  const all = await listIssuesForProject(project.id);
   const issues = parsed.data.status ? all.filter((iss) => iss.status === parsed.data.status) : all;
-  return toolOk({ issues: issues.map((iss) => toMcpIssue(iss, project)) });
+  return toolOk({ issues: await Promise.all(issues.map((iss) => toMcpIssue(iss, project))) });
 }
 
-function updateIssueStatusTool(project: Project, input: unknown): McpToolRunResult {
+async function updateIssueStatusTool(project: Project, input: unknown): Promise<McpToolRunResult> {
   const parsed = mcpUpdateIssueStatusSchema.safeParse(input);
   if (!parsed.success) return toolFail(parsed.error.issues[0]?.message ?? "Invalid input.");
 
-  const result = updateIssueStatus(project, parsed.data.issueId, parsed.data.status, "Claude", "claude");
+  const result = await updateIssueStatus(project, parsed.data.issueId, parsed.data.status, "Claude", "claude");
   if (!result.ok) return toolFail(result.error);
 
-  return toolOk({ issue: toMcpIssue(result.data.issue, project) });
+  return toolOk({ issue: await toMcpIssue(result.data.issue, project) });
 }
 
-function recordIssueFixTool(project: Project, input: unknown): McpToolRunResult {
+async function recordIssueFixTool(project: Project, input: unknown): Promise<McpToolRunResult> {
   const parsed = mcpRecordIssueFixSchema.safeParse(input);
   if (!parsed.success) return toolFail(parsed.error.issues[0]?.message ?? "Invalid input.");
 
-  const result = recordIssueFix(project, parsed.data.issueId, parsed.data.fixNote, "Claude", "claude");
+  const result = await recordIssueFix(project, parsed.data.issueId, parsed.data.fixNote, "Claude", "claude");
   if (!result.ok) return toolFail(result.error);
 
-  return toolOk({ issue: toMcpIssue(result.data.issue, project) });
+  return toolOk({ issue: await toMcpIssue(result.data.issue, project) });
 }
 
-function startTestRunTool(project: Project, input: unknown): McpToolRunResult {
+async function startTestRunTool(project: Project, input: unknown): Promise<McpToolRunResult> {
   const parsed = mcpStartTestRunSchema.safeParse(input);
   if (!parsed.success) return toolFail(parsed.error.issues[0]?.message ?? "Invalid input.");
 
-  const result = startTestRun(project, parsed.data.testRunId, "Claude", "claude");
+  const result = await startTestRun(project, parsed.data.testRunId, "Claude", "claude");
   if (!result.ok) return toolFail(result.error);
 
   return toolOk({ testRun: { runId: result.data.testRun.publicId, status: result.data.testRun.status } });
 }
 
-function submitTestResultTool(project: Project, input: unknown): McpToolRunResult {
+async function submitTestResultTool(project: Project, input: unknown): Promise<McpToolRunResult> {
   const parsed = mcpSubmitTestResultSchema.safeParse(input);
   if (!parsed.success) return toolFail(parsed.error.issues[0]?.message ?? "Invalid input.");
 
-  const result = submitTestResult(
+  const result = await submitTestResult(
     project,
     parsed.data.testRunId,
     parsed.data.testCaseId,
@@ -311,7 +323,7 @@ function submitTestResultTool(project: Project, input: unknown): McpToolRunResul
   // Hard business rule (03-CLAUDE-RULES.md): a fix does not verify an issue
   // — only an applicable passed rerun can. Applies the same as it does for
   // the manual runner, regardless of which entry point recorded the result.
-  applyRerunResultToIssuesForCase(project, result.data.testRun, parsed.data.testCaseId, result.data.result);
+  await applyRerunResultToIssuesForCase(project, result.data.testRun, parsed.data.testCaseId, result.data.result);
 
   return toolOk({
     result: {
@@ -323,27 +335,27 @@ function submitTestResultTool(project: Project, input: unknown): McpToolRunResul
     testRun: {
       runId: result.data.testRun.publicId,
       status: result.data.testRun.status,
-      progress: computeRunProgress(listTestResultsForRun(result.data.testRun.id)),
+      progress: computeRunProgress(await listTestResultsForRun(result.data.testRun.id)),
     },
   });
 }
 
-function completeTestRunTool(project: Project, input: unknown): McpToolRunResult {
+async function completeTestRunTool(project: Project, input: unknown): Promise<McpToolRunResult> {
   const parsed = mcpCompleteTestRunSchema.safeParse(input);
   if (!parsed.success) return toolFail(parsed.error.issues[0]?.message ?? "Invalid input.");
 
-  const result = completeTestRunFromClaude(project, parsed.data.testRunId, parsed.data.summary, "Claude");
+  const result = await completeTestRunFromClaude(project, parsed.data.testRunId, parsed.data.summary, "Claude");
   if (!result.ok) return toolFail(result.error);
 
   return toolOk({ progress: result.data.progress, needsReviewCount: result.data.needsReviewCount });
 }
 
-export function runMcpTool(tool: McpToolName, project: Project, input: unknown): McpToolRunResult {
+export async function runMcpTool(tool: McpToolName, project: Project, input: unknown): Promise<McpToolRunResult> {
   switch (tool) {
     case "health_check":
       return toolOk(healthCheck(project));
     case "get_project_context":
-      return toolOk(getProjectContext(project));
+      return toolOk(await getProjectContext(project));
     case "list_features":
       return listFeatures(project, input);
     case "create_feature":

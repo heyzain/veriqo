@@ -4,6 +4,7 @@ import { randomBytes, randomUUID } from "node:crypto";
 
 import { hashPassword, verifyPassword } from "@/lib/auth/password";
 import { checkRateLimit } from "@/lib/auth/rate-limit";
+import { logger } from "@/lib/logging/logger";
 import type { McpConnectionStatus } from "@/config/status.config";
 import { isMcpToolName, mcpToolNames, runMcpTool, type McpToolName } from "@/server/mcp/tools";
 import { listActivityForProject, recordActivity } from "@/server/repositories/activity-repository";
@@ -54,14 +55,14 @@ function toPublicCredential(credential: McpCredential): PublicMcpCredential {
   };
 }
 
-function logMcpActivity(
+async function logMcpActivity(
   projectId: string,
   actorType: ActivityEvent["actorType"],
   actorName: string,
   action: string,
   entityId: string,
-): void {
-  recordActivity({
+): Promise<void> {
+  await recordActivity({
     id: randomUUID(),
     projectId,
     actorType,
@@ -89,9 +90,12 @@ export type McpConnectionSnapshot = {
  * or regenerating a credential changes its `id`, so a stale success/failure
  * recorded against a previous credential correctly stops counting.
  */
-export function getMcpConnectionSnapshot(project: Project): McpConnectionSnapshot {
-  const active = findActiveCredentialForProject(project.id);
-  const state = getConnectionState(project.id);
+export async function getMcpConnectionSnapshot(project: Project): Promise<McpConnectionSnapshot> {
+  const [active, state, allActivity] = await Promise.all([
+    findActiveCredentialForProject(project.id),
+    getConnectionState(project.id),
+    listActivityForProject(project.id),
+  ]);
 
   let status: McpConnectionStatus = "notConfigured";
   if (active) {
@@ -104,7 +108,7 @@ export function getMcpConnectionSnapshot(project: Project): McpConnectionSnapsho
     }
   }
 
-  const recentActivity = listActivityForProject(project.id)
+  const recentActivity = allActivity
     .filter((event) => event.entityType === MCP_ACTIVITY_ENTITY_TYPE)
     .slice(0, 8);
 
@@ -129,12 +133,12 @@ export type IssueCredentialResult = {
  * new one. The plaintext `secret` is returned exactly once, here; it is
  * never stored or logged (only its scrypt hash is persisted).
  */
-export function issueMcpCredential(project: Project, actorName: string): IssueCredentialResult {
-  const existing = findActiveCredentialForProject(project.id);
+export async function issueMcpCredential(project: Project, actorName: string): Promise<IssueCredentialResult> {
+  const existing = await findActiveCredentialForProject(project.id);
   const now = new Date().toISOString();
 
   if (existing) {
-    saveCredential({ ...existing, status: "revoked", revokedAt: now, revokedByName: actorName });
+    await saveCredential({ ...existing, status: "revoked", revokedAt: now, revokedByName: actorName });
   }
 
   const secret = generateSecret();
@@ -148,9 +152,9 @@ export function issueMcpCredential(project: Project, actorName: string): IssueCr
     createdAt: now,
     createdByName: actorName,
   };
-  saveCredential(credential);
+  await saveCredential(credential);
 
-  logMcpActivity(
+  await logMcpActivity(
     project.id,
     "human",
     actorName,
@@ -161,13 +165,13 @@ export function issueMcpCredential(project: Project, actorName: string): IssueCr
   return { credential: toPublicCredential(credential), secret };
 }
 
-export function revokeMcpCredential(project: Project, actorName: string): void {
-  const existing = findActiveCredentialForProject(project.id);
+export async function revokeMcpCredential(project: Project, actorName: string): Promise<void> {
+  const existing = await findActiveCredentialForProject(project.id);
   if (!existing) return;
 
   const now = new Date().toISOString();
-  saveCredential({ ...existing, status: "revoked", revokedAt: now, revokedByName: actorName });
-  logMcpActivity(project.id, "human", actorName, "revoked the Claude MCP credential", existing.id);
+  await saveCredential({ ...existing, status: "revoked", revokedAt: now, revokedByName: actorName });
+  await logMcpActivity(project.id, "human", actorName, "revoked the Claude MCP credential", existing.id);
 }
 
 // ---- Inbound MCP request handling (app/api/mcp/[slug]/route.ts) ----
@@ -176,14 +180,14 @@ export type McpRequestResult =
   | { httpStatus: 200; body: { ok: true; tool: McpToolName; result: Record<string, unknown> } }
   | { httpStatus: 400 | 401 | 404 | 429; body: { ok: false; error: string } };
 
-function recordConnectionAttempt(
+async function recordConnectionAttempt(
   projectId: string,
   outcome:
     | { status: "success"; credentialId: string; tool: McpToolName }
     | { status: "error"; credentialId?: string; tool: McpToolName; error: string },
-): void {
+): Promise<void> {
   const now = new Date().toISOString();
-  const previous = getConnectionState(projectId);
+  const previous = await getConnectionState(projectId);
 
   const next: McpConnectionState = {
     projectId,
@@ -196,7 +200,7 @@ function recordConnectionAttempt(
     lastSuccessCredentialId:
       outcome.status === "success" ? outcome.credentialId : previous?.lastSuccessCredentialId,
   };
-  saveConnectionState(next);
+  await saveConnectionState(next);
 }
 
 /**
@@ -229,13 +233,14 @@ function extractBearerToken(header: string | null): string | null {
  * trusts a bearer secret, never an ambient session cookie, so a
  * cross-origin request without the secret simply fails authentication.
  */
-export function handleMcpRequest(
+export async function handleMcpRequest(
   slug: string,
   authorizationHeader: string | null,
   body: unknown,
-): McpRequestResult {
+): Promise<McpRequestResult> {
   const rateLimit = checkRateLimit(`mcp-auth:${slug}`, { limit: 30, windowMs: 5 * 60 * 1000 });
   if (!rateLimit.allowed) {
+    logger.warn("mcp request rate-limited", { slug });
     return { httpStatus: 429, body: { ok: false, error: "Too many requests. Try again shortly." } };
   }
 
@@ -249,38 +254,40 @@ export function handleMcpRequest(
     };
   }
 
-  const project = findProjectBySlug(slug);
+  const project = await findProjectBySlug(slug);
   if (!project) {
     return { httpStatus: 404, body: { ok: false, error: "Unknown project." } };
   }
 
   const secret = extractBearerToken(authorizationHeader);
-  const active = findActiveCredentialForProject(project.id);
+  const active = await findActiveCredentialForProject(project.id);
 
   if (!secret || !active || !verifyPassword(secret, active.secretHash)) {
-    recordConnectionAttempt(project.id, {
+    await recordConnectionAttempt(project.id, {
       status: "error",
       credentialId: active?.id,
       tool,
       error: "Invalid or revoked credential.",
     });
-    logMcpActivity(
+    await logMcpActivity(
       project.id,
       "system",
       "Veriqo",
       "rejected an MCP connection attempt (invalid or revoked credential)",
       active?.id ?? project.id,
     );
+    // Never logs the offered secret itself — only that an attempt was rejected.
+    logger.warn("mcp request rejected: invalid or revoked credential", { projectId: project.id, tool });
     return { httpStatus: 401, body: { ok: false, error: "Invalid or revoked credential." } };
   }
 
-  recordConnectionAttempt(project.id, { status: "success", credentialId: active.id, tool });
+  await recordConnectionAttempt(project.id, { status: "success", credentialId: active.id, tool });
 
   // Reassign so `runMcpTool` below reports the up-to-date step count on the
   // very request that completes the transition, not the stale pre-update value.
-  const currentProject = advanceSetupStep(project, 2);
+  const currentProject = await advanceSetupStep(project, 2);
   if (currentProject !== project) {
-    logMcpActivity(
+    await logMcpActivity(
       project.id,
       "system",
       "Veriqo",
@@ -289,14 +296,15 @@ export function handleMcpRequest(
     );
   }
 
-  const toolResult = runMcpTool(tool, currentProject, input);
+  const toolResult = await runMcpTool(tool, currentProject, input);
   if (!toolResult.ok) {
+    logger.warn("mcp tool call failed", { projectId: project.id, tool, error: toolResult.error });
     return { httpStatus: 400, body: { ok: false, error: toolResult.error } };
   }
 
   const genericLabel = toolActionLabel[tool];
   if (genericLabel) {
-    logMcpActivity(project.id, "claude", "Claude", genericLabel, active.id);
+    await logMcpActivity(project.id, "claude", "Claude", genericLabel, active.id);
   }
 
   return { httpStatus: 200, body: { ok: true, tool, result: toolResult.result } };

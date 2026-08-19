@@ -1,5 +1,7 @@
 import type { ReactNode } from "react";
 
+import Link from "next/link";
+
 import {
   AuthBrandPanel,
   AuthBrandStatement,
@@ -23,12 +25,23 @@ export default function AuthLayout({ children }: { children: ReactNode }) {
           <main id="main-content" className="flex flex-col gap-8">
             {children}
           </main>
-          <p className="text-center text-body-sm text-foreground-muted">
-            Need help? Email{" "}
-            <a href={`mailto:${productConfig.supportEmail}`} className="text-action underline">
-              {productConfig.supportEmail}
-            </a>
-          </p>
+          <div className="flex flex-col items-center gap-1.5 text-center text-body-sm text-foreground-muted">
+            <p>
+              Need help? Email{" "}
+              <a href={`mailto:${productConfig.supportEmail}`} className="text-action underline">
+                {productConfig.supportEmail}
+              </a>
+            </p>
+            <p>
+              <Link href={productConfig.urls.privacy} className="underline hover:text-foreground">
+                Privacy
+              </Link>
+              <span aria-hidden="true"> · </span>
+              <Link href={productConfig.urls.terms} className="underline hover:text-foreground">
+                Terms
+              </Link>
+            </p>
+          </div>
         </div>
       </div>
     </div>
