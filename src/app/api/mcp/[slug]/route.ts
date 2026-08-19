@@ -1,29 +1,26 @@
-import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
 import { handleMcpRequest } from "@/server/services/mcp-service";
 
 /**
  * The Claude MCP endpoint itself — what the command/config blocks on the
- * `/mcp` setup page point at. Authenticated by a per-project bearer secret
+ * `/mcp` setup page point at (`claude mcp add --transport http ...`, or the
+ * equivalent `claude_desktop_config.json` entry). A real MCP Streamable
+ * HTTP server: POST carries JSON-RPC messages (`initialize`, `tools/list`,
+ * `tools/call`, ...), GET/DELETE are the transport's stream/session
+ * lifecycle methods. Authenticated by a per-project bearer secret
  * (`Authorization: Bearer <secret>`), not a session cookie, so it is
  * reachable from a Claude Code/Desktop client, not just the browser.
  * `mcp-service.handleMcpRequest` owns every authorization, rate-limiting,
- * and audit-logging rule; this handler only translates HTTP <-> that call.
+ * and audit-logging rule, then hands the raw request to the MCP transport
+ * (`server/mcp/protocol-server.ts`) — this handler only extracts the route
+ * param and returns whatever `Response` that produces.
  */
-export async function POST(
-  request: NextRequest,
-  { params }: { params: Promise<{ slug: string }> },
-) {
+async function handle(request: NextRequest, { params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
-
-  let body: unknown;
-  try {
-    body = await request.json();
-  } catch {
-    return NextResponse.json({ ok: false, error: "Request body must be valid JSON." }, { status: 400 });
-  }
-
-  const result = await handleMcpRequest(slug, request.headers.get("authorization"), body);
-  return NextResponse.json(result.body, { status: result.httpStatus });
+  return handleMcpRequest(slug, request.headers.get("authorization"), request);
 }
+
+export const GET = handle;
+export const POST = handle;
+export const DELETE = handle;

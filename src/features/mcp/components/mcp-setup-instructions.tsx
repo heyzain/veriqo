@@ -35,7 +35,11 @@ export function McpSetupInstructions({ projectSlug, projectName }: McpSetupInstr
 
   const mcpServerKey = productConfig.name.toLowerCase();
   const mcpEndpoint = `${productConfig.urls.app}/api/mcp/${projectSlug}`;
-  const claudeCodeCommand = `claude mcp add --transport http ${mcpServerKey} ${mcpEndpoint} \\\n  --header "Authorization: Bearer <YOUR_MCP_CREDENTIAL>"`;
+  // Deliberately one line, no `\` continuation — `\` only continues a
+  // command in bash/zsh. PowerShell (Windows' default shell) needs a
+  // backtick for that instead, so a single copy-pasted block has to work
+  // without either: one line is the only form every shell accepts as-is.
+  const claudeCodeCommand = `claude mcp add --transport http ${mcpServerKey} ${mcpEndpoint} --header "Authorization: Bearer <YOUR_MCP_CREDENTIAL>"`;
   const claudeDesktopConfig = JSON.stringify(
     {
       mcpServers: {

@@ -2,12 +2,15 @@ import "server-only";
 
 import { randomBytes, randomUUID } from "node:crypto";
 
+import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
+
 import { hashPassword, verifyPassword } from "@/lib/auth/password";
 import { checkRateLimit } from "@/lib/auth/rate-limit";
 import { logger } from "@/lib/logging/logger";
 import type { McpConnectionStatus } from "@/config/status.config";
-import { isMcpToolName, mcpToolNames, runMcpTool, type McpToolName } from "@/server/mcp/tools";
-import { listActivityForProject, recordActivity } from "@/server/repositories/activity-repository";
+import { MCP_ACTIVITY_ENTITY_TYPE, logMcpActivity } from "@/server/mcp/activity";
+import { buildMcpServer } from "@/server/mcp/protocol-server";
+import { listActivityForProject } from "@/server/repositories/activity-repository";
 import {
   findActiveCredentialForProject,
   getConnectionState,
@@ -35,7 +38,6 @@ import type {
  */
 
 const SECRET_PREFIX = "vrq_live_";
-const MCP_ACTIVITY_ENTITY_TYPE = "mcpConnection";
 
 function generateSecret(): string {
   return `${SECRET_PREFIX}${randomBytes(24).toString("base64url")}`;
@@ -53,25 +55,6 @@ function toPublicCredential(credential: McpCredential): PublicMcpCredential {
     revokedAt: credential.revokedAt,
     revokedByName: credential.revokedByName,
   };
-}
-
-async function logMcpActivity(
-  projectId: string,
-  actorType: ActivityEvent["actorType"],
-  actorName: string,
-  action: string,
-  entityId: string,
-): Promise<void> {
-  await recordActivity({
-    id: randomUUID(),
-    projectId,
-    actorType,
-    actorName,
-    action,
-    entityType: MCP_ACTIVITY_ENTITY_TYPE,
-    entityId,
-    createdAt: new Date().toISOString(),
-  });
 }
 
 export type McpConnectionSnapshot = {
@@ -176,15 +159,11 @@ export async function revokeMcpCredential(project: Project, actorName: string): 
 
 // ---- Inbound MCP request handling (app/api/mcp/[slug]/route.ts) ----
 
-export type McpRequestResult =
-  | { httpStatus: 200; body: { ok: true; tool: McpToolName; result: Record<string, unknown> } }
-  | { httpStatus: 400 | 401 | 404 | 429; body: { ok: false; error: string } };
-
 async function recordConnectionAttempt(
   projectId: string,
   outcome:
-    | { status: "success"; credentialId: string; tool: McpToolName }
-    | { status: "error"; credentialId?: string; tool: McpToolName; error: string },
+    | { status: "success"; credentialId: string; method: string }
+    | { status: "error"; credentialId?: string; method: string; error: string },
 ): Promise<void> {
   const now = new Date().toISOString();
   const previous = await getConnectionState(projectId);
@@ -194,7 +173,7 @@ async function recordConnectionAttempt(
     lastAttemptAt: now,
     lastAttemptStatus: outcome.status,
     lastAttemptCredentialId: outcome.credentialId ?? previous?.lastAttemptCredentialId,
-    lastAttemptTool: outcome.tool,
+    lastAttemptTool: outcome.method,
     lastAttemptError: outcome.status === "error" ? outcome.error : undefined,
     lastSuccessAt: outcome.status === "success" ? now : previous?.lastSuccessAt,
     lastSuccessCredentialId:
@@ -202,21 +181,6 @@ async function recordConnectionAttempt(
   };
   await saveConnectionState(next);
 }
-
-/**
- * Generic "Claude ran a tool" activity line for read-only tools. `create_feature`
- * and `update_feature` are deliberately absent — `feature-service.ts` already
- * records a specific, useful line for those ("discovered X", "proposed an
- * update to Y"), and logging both would duplicate the ledger entry for one
- * MCP call.
- */
-const toolActionLabel: Partial<Record<McpToolName, string>> = {
-  health_check: "ran a health check over MCP",
-  get_project_context: "read the project QA context over MCP",
-  list_features: "listed features over MCP",
-  list_test_cases: "listed test cases over MCP",
-  list_issues: "listed issues over MCP",
-};
 
 function extractBearerToken(header: string | null): string | null {
   if (!header) return null;
@@ -226,38 +190,64 @@ function extractBearerToken(header: string | null): string | null {
 }
 
 /**
- * Authenticates and executes one MCP tool call. Rate-limited per project
- * slug (03-CLAUDE-RULES.md, "Rate-limit authentication, key management, and
- * MCP endpoints"). CSRF protection doesn't apply here the way it does to the
+ * Best-effort label for the connection-attempt audit trail
+ * (`McpConnectionState.lastAttemptTool`). For a `tools/call` request this is
+ * the actual tool name (`"health_check"`, `"submit_test_result"`, ...) —
+ * the most useful thing to show — falling back to the bare JSON-RPC method
+ * (`"initialize"`, `"tools/list"`, ...) for everything else, or `"unknown"`
+ * if the body couldn't be read as JSON at all.
+ */
+function extractMethodLabel(parsedBody: unknown): string {
+  if (!parsedBody || typeof parsedBody !== "object" || !("method" in parsedBody)) return "unknown";
+  const method = String((parsedBody as { method?: unknown }).method ?? "unknown");
+  if (method !== "tools/call" || !("params" in parsedBody)) return method;
+  const params = (parsedBody as { params?: unknown }).params;
+  if (!params || typeof params !== "object" || !("name" in params)) return method;
+  return String((params as { name?: unknown }).name ?? method);
+}
+
+/**
+ * Authenticates a request and, once authenticated, hands it to a real MCP
+ * server over the Streamable HTTP transport — this is what
+ * `mcp-setup-instructions.tsx` actually promises when it tells a user to run
+ * `claude mcp add --transport http`. Rate-limited per project slug
+ * (03-CLAUDE-RULES.md, "Rate-limit authentication, key management, and MCP
+ * endpoints"). CSRF protection doesn't apply here the way it does to the
  * cookie-authenticated server actions elsewhere in the app — this endpoint
  * trusts a bearer secret, never an ambient session cookie, so a
  * cross-origin request without the secret simply fails authentication.
+ *
+ * Stateless mode (`sessionIdGenerator: undefined`): a fresh `McpServer` and
+ * transport are built per request and discarded afterward — no session
+ * state to leak between projects or requests, appropriate since none of
+ * Veriqo's tools are long-running or need server-initiated pushes.
+ * `enableJsonResponse: true` returns plain JSON instead of an SSE stream,
+ * for the same reason.
  */
 export async function handleMcpRequest(
   slug: string,
   authorizationHeader: string | null,
-  body: unknown,
-): Promise<McpRequestResult> {
+  request: Request,
+): Promise<Response> {
   const rateLimit = checkRateLimit(`mcp-auth:${slug}`, { limit: 30, windowMs: 5 * 60 * 1000 });
   if (!rateLimit.allowed) {
     logger.warn("mcp request rate-limited", { slug });
-    return { httpStatus: 429, body: { ok: false, error: "Too many requests. Try again shortly." } };
-  }
-
-  const bodyObject = body && typeof body === "object" ? (body as Record<string, unknown>) : {};
-  const tool = bodyObject.tool;
-  const input = bodyObject.input;
-  if (!isMcpToolName(tool)) {
-    return {
-      httpStatus: 400,
-      body: { ok: false, error: `"tool" must be one of: ${mcpToolNames.join(", ")}.` },
-    };
+    return Response.json({ error: "Too many requests. Try again shortly." }, { status: 429 });
   }
 
   const project = await findProjectBySlug(slug);
   if (!project) {
-    return { httpStatus: 404, body: { ok: false, error: "Unknown project." } };
+    return Response.json({ error: "Unknown project." }, { status: 404 });
   }
+
+  // Read the body once here (for auth-audit labeling) and hand the parsed
+  // value to the transport via `parsedBody` — a `Request` body can only be
+  // consumed once, and the transport does its own `req.json()` otherwise.
+  const parsedBody = await request
+    .clone()
+    .json()
+    .catch(() => undefined);
+  const method = extractMethodLabel(parsedBody);
 
   const secret = extractBearerToken(authorizationHeader);
   const active = await findActiveCredentialForProject(project.id);
@@ -266,7 +256,7 @@ export async function handleMcpRequest(
     await recordConnectionAttempt(project.id, {
       status: "error",
       credentialId: active?.id,
-      tool,
+      method,
       error: "Invalid or revoked credential.",
     });
     await logMcpActivity(
@@ -277,13 +267,13 @@ export async function handleMcpRequest(
       active?.id ?? project.id,
     );
     // Never logs the offered secret itself — only that an attempt was rejected.
-    logger.warn("mcp request rejected: invalid or revoked credential", { projectId: project.id, tool });
-    return { httpStatus: 401, body: { ok: false, error: "Invalid or revoked credential." } };
+    logger.warn("mcp request rejected: invalid or revoked credential", { projectId: project.id, method });
+    return Response.json({ error: "Invalid or revoked credential." }, { status: 401 });
   }
 
-  await recordConnectionAttempt(project.id, { status: "success", credentialId: active.id, tool });
+  await recordConnectionAttempt(project.id, { status: "success", credentialId: active.id, method });
 
-  // Reassign so `runMcpTool` below reports the up-to-date step count on the
+  // Reassign so tool calls below report the up-to-date step count on the
   // very request that completes the transition, not the stale pre-update value.
   const currentProject = await advanceSetupStep(project, 2);
   if (currentProject !== project) {
@@ -296,16 +286,12 @@ export async function handleMcpRequest(
     );
   }
 
-  const toolResult = await runMcpTool(tool, currentProject, input);
-  if (!toolResult.ok) {
-    logger.warn("mcp tool call failed", { projectId: project.id, tool, error: toolResult.error });
-    return { httpStatus: 400, body: { ok: false, error: toolResult.error } };
-  }
+  const server = buildMcpServer(currentProject, active.id);
+  const transport = new WebStandardStreamableHTTPServerTransport({
+    sessionIdGenerator: undefined,
+    enableJsonResponse: true,
+  });
+  await server.connect(transport);
 
-  const genericLabel = toolActionLabel[tool];
-  if (genericLabel) {
-    await logMcpActivity(project.id, "claude", "Claude", genericLabel, active.id);
-  }
-
-  return { httpStatus: 200, body: { ok: true, tool, result: toolResult.result } };
+  return transport.handleRequest(request, { parsedBody });
 }
