@@ -167,7 +167,10 @@ export default async function TestRunDetailPage({
           <div className="flex flex-col gap-3">
             {items.map(({ testCase, result }) => {
               const feature = features.find((f) => f.id === testCase.featureId);
-              const resultDef = resultStatuses[result.status];
+              const isRunning = testRun.status === "inProgress" && result.status === "notRun";
+              const resultDef = isRunning
+                ? { label: "In progress", tone: "progress" as const, icon: "inProgress" as const, transitions: [] }
+                : resultStatuses[result.status];
 
               const flaggedForReview = Boolean(result.needsHumanReview) && result.recordedBySource === "claude";
 
@@ -277,10 +280,22 @@ export default async function TestRunDetailPage({
             />
           </section>
 
-          <section className="flex flex-col gap-1.5 rounded-md border border-subtle bg-inset/30 p-5 text-body-sm text-foreground-muted">
+          <section className="flex flex-col gap-2 rounded-md border border-subtle bg-inset/30 p-5 text-body-sm text-foreground-muted">
             <div className="flex items-center gap-1.5 pb-1">
               <SourceBadge source={testRun.createdBySource} />
               <span>Created by {testRun.createdByName}</span>
+            </div>
+            <div className="flex items-center gap-1.5 pb-1">
+              <span className="text-foreground">Mode:</span>
+              {testRun.executionMode === "claudeAssisted" ? (
+                <Badge tone="ai" icon="claude">
+                  Claude-assisted
+                </Badge>
+              ) : (
+                <Badge tone="neutral" icon="human">
+                  Manual
+                </Badge>
+              )}
             </div>
             <span>Created {formatDateTime(testRun.createdAt)}</span>
             {testRun.startedAt ? <span>Started {formatDateTime(testRun.startedAt)}</span> : null}

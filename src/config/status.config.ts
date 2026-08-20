@@ -255,7 +255,7 @@ export const actorTypes: Record<
   ActorType,
   { label: string; tone: StatusTone; icon: IconName }
 > = {
-  human: { label: "Manual", tone: "neutral", icon: "human" },
+  human: { label: "Human", tone: "neutral", icon: "human" },
   claude: { label: "Claude", tone: "ai", icon: "claude" },
   system: { label: "System", tone: "blocked", icon: "system" },
   import: { label: "Imported", tone: "blocked", icon: "import" },
