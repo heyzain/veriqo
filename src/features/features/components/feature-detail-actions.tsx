@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 
 import { Button } from "@/components/ui/button";
@@ -70,6 +71,14 @@ export function FeatureDetailActions({ project, feature, allFeatures }: FeatureD
         <Button type="button" intent="primary" size="sm" disabled={isPending} onClick={() => run(approveFeatureAction, "Couldn't approve the feature")}>
           <Icon name="approved" size={14} />
           <span>Approve</span>
+        </Button>
+      ) : null}
+      {feature.status === "approved" ? (
+        <Button asChild intent="secondary" size="sm">
+          <Link href={`/projects/${project.slug}/test-cases?tab=generate&scope=selected&featureId=${feature.publicId}`}>
+            <Icon name="testCases" size={14} />
+            <span>Generate test cases</span>
+          </Link>
         </Button>
       ) : null}
       <Button type="button" intent="secondary" size="sm" onClick={() => setEditing(true)}>

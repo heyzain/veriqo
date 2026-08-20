@@ -102,3 +102,18 @@ export async function toggleProjectArchivedAction(formData: FormData): Promise<v
   redirect(`/projects/${slug}/settings`);
 }
 
+export async function completeSetupStepAction(formData: FormData): Promise<void> {
+  const slug = String(formData.get("slug") ?? "");
+  const step = Number(formData.get("step") ?? 7);
+  const user = await getCurrentUser();
+  if (!user) redirect("/sign-in");
+
+  const { getProjectForOwner, advanceSetupStep } = await import("@/server/services/project-service");
+  const project = await getProjectForOwner(slug, user);
+  if (!project) redirect("/projects");
+
+  await advanceSetupStep(project, step);
+  redirect(`/projects/${slug}`);
+}
+
+

@@ -53,7 +53,7 @@ export default async function ProjectActivityPage({
   );
 
   return (
-    <div className="flex max-w-4xl flex-col gap-8">
+    <div className="flex flex-col gap-8">
       {/* Header */}
       <div className="flex flex-col gap-1 border-b border-subtle pb-6 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex flex-col gap-1">

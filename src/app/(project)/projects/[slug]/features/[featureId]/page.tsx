@@ -49,7 +49,7 @@ export default async function FeatureDetailPage({
   const statusDef = featureStatuses[feature.status];
 
   return (
-    <div className="flex max-w-5xl flex-col gap-8">
+    <div className="flex flex-col gap-8">
       <div className="flex flex-col gap-1">
         <Link
           href={`/projects/${project.slug}/features`}
@@ -69,7 +69,7 @@ export default async function FeatureDetailPage({
         </div>
         <div className="flex flex-col gap-1.5">
           <h1 className="text-title-lg font-serif text-foreground">{feature.name}</h1>
-          <p className="max-w-2xl text-body text-foreground-secondary">{feature.description}</p>
+          <p className="max-w-3xl text-body text-foreground-secondary">{feature.description}</p>
         </div>
 
         {duplicateOf ? (
@@ -88,8 +88,8 @@ export default async function FeatureDetailPage({
 
       <FeatureDiffView feature={feature} />
 
-      <div className="grid grid-cols-1 gap-8 lg:grid-cols-3">
-        <div className="flex flex-col gap-8 lg:col-span-2">
+      <div className="grid grid-cols-1 gap-8 lg:grid-cols-12">
+        <div className="flex flex-col gap-8 lg:col-span-8">
           <section className="flex flex-col gap-3">
             <h2 className="flex items-center gap-2 text-title-md text-foreground">
               <Icon name="criteria" size={16} className="text-foreground-muted" />
@@ -125,7 +125,7 @@ export default async function FeatureDetailPage({
               </div>
             ) : (
               <Link
-                href={`/projects/${project.slug}/test-cases`}
+                href={`/projects/${project.slug}/test-cases?tab=generate&scope=selected&featureId=${feature.publicId}`}
                 className="w-fit text-body-sm text-action hover:underline"
               >
                 Generate test cases for this feature →
@@ -174,7 +174,7 @@ export default async function FeatureDetailPage({
           </section>
         </div>
 
-        <div className="flex flex-col gap-6">
+        <div className="flex flex-col gap-6 lg:col-span-4 lg:min-w-[340px]">
           <section className="flex flex-col gap-3 rounded-md border border-subtle bg-surface p-5">
             <h2 className="flex items-center gap-2 text-title-md text-foreground">
               <Icon name="roles" size={16} className="text-foreground-muted" />

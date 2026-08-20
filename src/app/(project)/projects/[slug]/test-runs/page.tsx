@@ -68,9 +68,19 @@ export default async function ProjectTestRunsPage({
             <h1 className="text-title-lg font-serif text-foreground">Test Runs</h1>
             <span className="text-mono-sm text-foreground-muted">({allRuns.length} runs)</span>
             {needsAttentionCount > 0 ? (
-              <Badge tone="fail" icon="alert">
-                {needsAttentionCount} need{needsAttentionCount === 1 ? "s" : ""} attention
-              </Badge>
+              <Link
+                href={
+                  statusFilter === "needsAttention"
+                    ? `/projects/${project.slug}/test-runs`
+                    : `/projects/${project.slug}/test-runs?status=needsAttention`
+                }
+                className="transition-fast hover:opacity-85 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring rounded-pill"
+                title={statusFilter === "needsAttention" ? "Clear attention filter" : "Filter by needs attention"}
+              >
+                <Badge tone="fail" icon="alert" className="cursor-pointer">
+                  {needsAttentionCount} need{needsAttentionCount === 1 ? "s" : ""} attention
+                </Badge>
+              </Link>
             ) : null}
           </div>
           <p className="text-body text-foreground-secondary">

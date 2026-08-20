@@ -209,6 +209,14 @@ export function FeatureRecordTable({
             </Button>
           </div>
           <div className="flex items-center gap-2">
+            <Button asChild intent="secondary" size="sm">
+              <Link
+                href={`/projects/${project.slug}/test-cases?tab=generate&scope=selected&featureIds=${Array.from(selected).join(",")}`}
+              >
+                <Icon name="testCases" size={14} />
+                <span>Generate test cases</span>
+              </Link>
+            </Button>
             <Button
               type="button"
               intent="secondary"
@@ -372,6 +380,16 @@ export function FeatureRecordTable({
                                 <IconButton icon="more" label={`More actions for ${feature.publicId}`} intent="ghost" size="sm" />
                               </MenuTrigger>
                               <MenuContent align="end">
+                                <MenuItem
+                                  icon="testCases"
+                                  onSelect={() =>
+                                    router.push(
+                                      `/projects/${project.slug}/test-cases?tab=generate&scope=selected&featureIds=${feature.publicId}`,
+                                    )
+                                  }
+                                >
+                                  Generate test cases
+                                </MenuItem>
                                 <MenuItem icon="draft" onSelect={() => setEditing(feature)}>
                                   Edit details
                                 </MenuItem>

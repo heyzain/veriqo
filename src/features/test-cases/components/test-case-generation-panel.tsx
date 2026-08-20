@@ -26,6 +26,8 @@ export type TestCaseGenerationPanelProps = {
   approvedFeatures: readonly TestGenerationContext["features"][number][];
   existingTestCases: readonly TestGenerationContext["existingTestCases"][number][];
   environments: readonly string[];
+  initialScope?: TestGenerationScope;
+  initialSelectedFeatureIds?: readonly string[];
 };
 
 type GenerationState = "idle" | "waiting" | "incoming" | "completed";
@@ -46,10 +48,16 @@ export function TestCaseGenerationPanel({
   approvedFeatures,
   existingTestCases,
   environments,
+  initialScope,
+  initialSelectedFeatureIds,
 }: TestCaseGenerationPanelProps) {
   const router = useRouter();
-  const [scope, setScope] = useState<TestGenerationScope>("full");
-  const [selectedFeatureIds, setSelectedFeatureIds] = useState<ReadonlySet<string>>(new Set());
+  const [scope, setScope] = useState<TestGenerationScope>(
+    initialScope ?? (initialSelectedFeatureIds && initialSelectedFeatureIds.length > 0 ? "selected" : "full"),
+  );
+  const [selectedFeatureIds, setSelectedFeatureIds] = useState<ReadonlySet<string>>(
+    () => new Set(initialSelectedFeatureIds ?? []),
+  );
 
   const inScopeFeatures = useMemo(
     () => (scope === "full" ? approvedFeatures : approvedFeatures.filter((f) => selectedFeatureIds.has(f.publicId))),

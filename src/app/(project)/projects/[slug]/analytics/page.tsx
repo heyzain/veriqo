@@ -39,7 +39,7 @@ export default async function ProjectAnalyticsPage({
   const { passRateTrend, failuresByModule, severityDistribution, fixVerification, reopenedRate, sourceBreakdown } = analytics;
 
   return (
-    <div className="flex max-w-5xl flex-col gap-8">
+    <div className="flex flex-col gap-8">
       {/* Header */}
       <div className="flex flex-col gap-1 border-b border-subtle pb-6">
         <h1 className="text-title-lg font-serif text-foreground">Analytics</h1>

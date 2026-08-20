@@ -31,7 +31,7 @@ export function ConnectionBadge({
 }: ConnectionBadgeProps) {
   const definition = mcpConnectionStatuses[status];
   const dotClass = dotClassByTone[definition.tone] ?? dotClassByTone.neutral;
-  const label = `Claude MCP: ${definition.label}`;
+  const label = `MCP: ${definition.label}`;
 
   if (collapsed) {
     return (
@@ -54,7 +54,7 @@ export function ConnectionBadge({
     >
       <span className={`h-2 w-2 rounded-full ${dotClass}`} />
       <span className="text-foreground-secondary">
-        Claude MCP:{" "}
+        MCP:{" "}
         <span
           className={
             definition.tone === "pass"

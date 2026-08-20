@@ -92,6 +92,20 @@ export default async function ProjectTestCasesPage({
     ]),
   );
 
+  const requestedTab = typeof query.tab === "string" ? query.tab : "";
+  const requestedScope = query.scope === "selected" ? "selected" : undefined;
+  const rawFeatureIds =
+    typeof query.featureIds === "string"
+      ? query.featureIds.split(",").map((s) => s.trim()).filter(Boolean)
+      : typeof query.featureId === "string"
+        ? [query.featureId]
+        : typeof query.feature === "string"
+          ? [query.feature]
+          : [];
+
+  const initialTab = requestedTab === "generate" || (allTestCases.length === 0 && requestedTab !== "records") ? "generate" : "records";
+  const initialScope = requestedScope || (rawFeatureIds.length > 0 && initialTab === "generate" ? "selected" : undefined);
+
   return (
     <div className="flex flex-col gap-8">
       <div className="flex flex-col gap-4 border-b border-subtle pb-6 sm:flex-row sm:items-center sm:justify-between">
@@ -118,7 +132,7 @@ export default async function ProjectTestCasesPage({
         </Button>
       </div>
 
-      <Tabs defaultValue={allTestCases.length === 0 ? "generate" : "records"}>
+      <Tabs defaultValue={initialTab}>
         <TabsList>
           <TabsTrigger value="records">Records</TabsTrigger>
           <TabsTrigger value="generate">Generate</TabsTrigger>
@@ -162,6 +176,8 @@ export default async function ProjectTestCasesPage({
               status: tc.status,
             }))}
             environments={candidateEnvironments}
+            initialScope={initialScope}
+            initialSelectedFeatureIds={rawFeatureIds.length > 0 ? rawFeatureIds : undefined}
           />
         </TabsContent>
       </Tabs>

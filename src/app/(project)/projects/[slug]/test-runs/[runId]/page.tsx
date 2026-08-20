@@ -88,7 +88,7 @@ export default async function TestRunDetailPage({
   };
 
   return (
-    <div className="flex max-w-5xl flex-col gap-8">
+    <div className="flex flex-col gap-8">
       <div className="flex flex-col gap-1">
         <Link
           href={`/projects/${project.slug}/test-runs`}
@@ -135,7 +135,7 @@ export default async function TestRunDetailPage({
           ) : null}
         </div>
 
-        {testRun.notes ? <p className="max-w-2xl text-body text-foreground-secondary">{testRun.notes}</p> : null}
+        {testRun.notes ? <p className="max-w-3xl text-body text-foreground-secondary">{testRun.notes}</p> : null}
 
         {!isClaudeAssistedInProgress ? <RunProgressBar progress={progress} /> : null}
 
@@ -157,8 +157,8 @@ export default async function TestRunDetailPage({
         />
       ) : null}
 
-      <div className="grid grid-cols-1 gap-8 lg:grid-cols-3">
-        <div className="flex flex-col gap-4 lg:col-span-2">
+      <div className="grid grid-cols-1 gap-8 lg:grid-cols-12">
+        <div className="flex flex-col gap-4 lg:col-span-8">
           <h2 className="flex items-center gap-2 text-title-md text-foreground">
             <Icon name="testCases" size={16} className="text-foreground-muted" />
             Test cases ({items.length})
@@ -267,8 +267,54 @@ export default async function TestRunDetailPage({
           </div>
         </div>
 
-        <div className="flex flex-col gap-6">
-          <section className="flex flex-col gap-3 rounded-md border border-subtle bg-surface p-5">
+        <div className="flex flex-col gap-6 lg:col-span-4 lg:min-w-[340px]">
+          <section className="flex flex-col gap-3 rounded-lg border border-subtle bg-surface p-5 shadow-sm">
+            <h2 className="text-title-md text-foreground">Run context</h2>
+            <div className="flex flex-col gap-2.5 text-body-sm">
+              <div className="flex items-center justify-between border-b border-subtle pb-2">
+                <span className="text-foreground-muted">Execution mode</span>
+                {testRun.executionMode === "claudeAssisted" ? (
+                  <Badge tone="ai" icon="claude">
+                    Claude-assisted
+                  </Badge>
+                ) : (
+                  <Badge tone="neutral" icon="human">
+                    Manual
+                  </Badge>
+                )}
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-foreground-muted">Environment</span>
+                <span className="font-medium text-foreground">{testRun.environment}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-foreground-muted">Browser</span>
+                <span className="text-foreground">{testRun.browser}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-foreground-muted">Build</span>
+                <span className="font-mono text-[12px] text-foreground">{testRun.build}</span>
+              </div>
+              {testRun.assigneeName ? (
+                <div className="flex items-center justify-between border-t border-subtle pt-2">
+                  <span className="text-foreground-muted">Assignee</span>
+                  <span className="text-foreground">{testRun.assigneeName}</span>
+                </div>
+              ) : null}
+            </div>
+
+            <div className="flex flex-col gap-1 border-t border-subtle pt-3 text-body-sm text-foreground-muted">
+              <div className="flex items-center gap-1.5 pb-0.5">
+                <SourceBadge source={testRun.createdBySource} />
+                <span>Created by {testRun.createdByName}</span>
+              </div>
+              <span>Created {formatDateTime(testRun.createdAt)}</span>
+              {testRun.startedAt ? <span>Started {formatDateTime(testRun.startedAt)}</span> : null}
+              {testRun.completedAt ? <span>Completed {formatDateTime(testRun.completedAt)}</span> : null}
+            </div>
+          </section>
+
+          <section className="flex flex-col gap-3 rounded-lg border border-subtle bg-surface p-5 shadow-sm">
             <h2 className="flex items-center gap-2 text-title-md text-foreground">
               <Icon name="activity" size={16} className="text-foreground-muted" />
               Activity
@@ -278,28 +324,6 @@ export default async function TestRunDetailPage({
               emptyTitle="No activity yet"
               emptyDescription="Lifecycle and result events for this run will appear here."
             />
-          </section>
-
-          <section className="flex flex-col gap-2 rounded-md border border-subtle bg-inset/30 p-5 text-body-sm text-foreground-muted">
-            <div className="flex items-center gap-1.5 pb-1">
-              <SourceBadge source={testRun.createdBySource} />
-              <span>Created by {testRun.createdByName}</span>
-            </div>
-            <div className="flex items-center gap-1.5 pb-1">
-              <span className="text-foreground">Mode:</span>
-              {testRun.executionMode === "claudeAssisted" ? (
-                <Badge tone="ai" icon="claude">
-                  Claude-assisted
-                </Badge>
-              ) : (
-                <Badge tone="neutral" icon="human">
-                  Manual
-                </Badge>
-              )}
-            </div>
-            <span>Created {formatDateTime(testRun.createdAt)}</span>
-            {testRun.startedAt ? <span>Started {formatDateTime(testRun.startedAt)}</span> : null}
-            {testRun.completedAt ? <span>Completed {formatDateTime(testRun.completedAt)}</span> : null}
           </section>
         </div>
       </div>

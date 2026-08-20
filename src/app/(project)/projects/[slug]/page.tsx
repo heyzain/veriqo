@@ -80,6 +80,14 @@ export default async function ProjectOverviewPage({
 
         <div className="flex items-center gap-2.5 shrink-0">
           <RefreshButton intent="secondary" size="md" label="Refresh" />
+          {isFullySetUp ? (
+            <Button asChild intent="secondary" size="md">
+              <a href="#readiness">
+                <Icon name="approved" size={15} />
+                <span>Release readiness</span>
+              </a>
+            </Button>
+          ) : null}
           <Button asChild intent="secondary" size="md">
             <Link href={`/projects/${project.slug}/settings`}>
               <Icon name="settings" size={15} />
@@ -115,7 +123,11 @@ export default async function ProjectOverviewPage({
           {readiness ? <NextActionPanel action={readiness.nextAction} /> : null}
 
           {/* Explainable Release Confidence */}
-          {readiness ? <ReleaseConfidencePanel confidence={readiness.confidence} /> : null}
+          {readiness ? (
+            <div id="readiness" className="scroll-mt-6">
+              <ReleaseConfidencePanel confidence={readiness.confidence} />
+            </div>
+          ) : null}
 
           {/* Recent Activity Ledger snippet & Quick links */}
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
@@ -138,39 +150,41 @@ export default async function ProjectOverviewPage({
                 {records.activity.slice(0, 5).map((evt) => (
                   <div key={evt.id} className="flex items-start justify-between gap-4 py-3 first:pt-1 last:pb-1">
                     <div className="flex items-start gap-3 min-w-0">
-                      <div className="flex h-7 w-7 items-center justify-center rounded-full bg-paper-2 text-foreground-muted shrink-0 text-[11px] font-medium">
-                        <Icon name={evt.actorType === "claude" ? "claude" : evt.actorType === "system" ? "system" : "human"} size={14} />
-                      </div>
-                      <div className="flex flex-col min-w-0">
-                        <p className="text-body-sm text-foreground">
-                          <span className="font-medium text-foreground">{evt.actorName}</span>{" "}
-                          <span className="text-foreground-secondary">{evt.action}</span>
-                        </p>
+                      <div className="flex flex-col gap-0.5 min-w-0">
+                        <span className="text-body-sm text-foreground">
+                          <strong className="font-semibold">{evt.actorName}</strong> {evt.action}
+                        </span>
+                        <span className="text-mono-sm text-[11px] text-foreground-muted">
+                          {formatDate(evt.createdAt)}
+                        </span>
                       </div>
                     </div>
-                    <span className="text-mono-sm text-foreground-muted text-[11px] shrink-0">
-                      {formatDate(evt.createdAt)}
-                    </span>
                   </div>
                 ))}
               </div>
             </div>
 
-            {/* Right col: Setup Checklist Accordion/Summary */}
+            {/* Right 1 col: Quick Links & Summary */}
             <div className="flex flex-col gap-4 rounded-lg border border-subtle bg-surface p-6">
-              <div className="flex items-center justify-between border-b border-subtle pb-3">
-                <div className="flex items-center gap-2">
-                  <Icon name="check" size={16} className="text-pass" />
-                  <h3 className="text-title-md text-foreground">Setup Status</h3>
-                </div>
-                <Badge tone="pass">
-                  {project.setupStepsCompleted} / {totalSetupSteps}
-                </Badge>
-              </div>
+              <h3 className="text-title-md text-foreground">QA Workspace Status</h3>
               <p className="text-body-sm text-foreground-secondary">
                 All guided setup steps have been completed for {project.name}.
               </p>
               <div className="flex flex-col gap-2 pt-2">
+                <a
+                  href="#readiness"
+                  className="flex items-center justify-between text-body-sm p-2 rounded hover:bg-inset text-foreground-secondary hover:text-foreground transition-fast"
+                >
+                  <span className="font-medium text-action">Release readiness score</span>
+                  <Icon name="chevronRight" size={14} className="text-action" />
+                </a>
+                <Link
+                  href={`/projects/${project.slug}/analytics`}
+                  className="flex items-center justify-between text-body-sm p-2 rounded hover:bg-inset text-foreground-secondary hover:text-foreground transition-fast"
+                >
+                  <span>Analytics & trends</span>
+                  <Icon name="chevronRight" size={14} className="text-foreground-muted" />
+                </Link>
                 <Link
                   href={`/projects/${project.slug}/features`}
                   className="flex items-center justify-between text-body-sm p-2 rounded hover:bg-inset text-foreground-secondary hover:text-foreground transition-fast"

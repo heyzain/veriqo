@@ -47,7 +47,7 @@ export default async function TestCaseDetailPage({
   const statusDef = testCaseStatuses[testCase.status];
 
   return (
-    <div className="flex max-w-5xl flex-col gap-8">
+    <div className="flex flex-col gap-8">
       <div className="flex flex-col gap-1">
         <Link
           href={`/projects/${project.slug}/test-cases`}
@@ -97,8 +97,8 @@ export default async function TestCaseDetailPage({
 
       <TestCaseDiffView testCase={testCase} />
 
-      <div className="grid grid-cols-1 gap-8 lg:grid-cols-3">
-        <div className="flex flex-col gap-8 lg:col-span-2">
+      <div className="grid grid-cols-1 gap-8 lg:grid-cols-12">
+        <div className="flex flex-col gap-8 lg:col-span-8">
           {testCase.preconditions ? (
             <section className="flex flex-col gap-3 rounded-lg border border-subtle bg-surface p-5 shadow-sm">
               <h2 className="flex items-center gap-2 text-title-md text-foreground">
@@ -199,7 +199,7 @@ export default async function TestCaseDetailPage({
           ) : null}
         </div>
 
-        <div className="flex flex-col gap-6">
+        <div className="flex flex-col gap-6 lg:col-span-4 lg:min-w-[340px]">
           {feature ? (
             <section className="flex flex-col gap-3 rounded-md border border-subtle bg-surface p-5">
               <h2 className="flex items-center gap-2 text-title-md text-foreground">

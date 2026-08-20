@@ -4,6 +4,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Icon } from "@/components/ui/icon";
 import { setupSteps, totalSetupSteps } from "@/config/setup-steps.config";
+import { completeSetupStepAction } from "@/features/projects/actions";
 import {
   getStepDestination,
   SetupStepItem,
@@ -46,13 +47,25 @@ export function SetupPath({ project }: SetupPathProps) {
             </div>
 
             <div className="shrink-0">
-              <Button asChild intent="primary" size="lg" className="w-full sm:w-auto">
-                <Link href={nextStepDetails.href}>
-                  <Icon name="mcp" size={16} />
-                  <span>{nextStepDetails.actionLabel}</span>
-                  <Icon name="chevronRight" size={16} />
-                </Link>
-              </Button>
+              {nextStep.step === 7 ? (
+                <form action={completeSetupStepAction}>
+                  <input type="hidden" name="slug" value={project.slug} />
+                  <input type="hidden" name="step" value="7" />
+                  <Button type="submit" intent="primary" size="lg" className="w-full sm:w-auto">
+                    <Icon name="approved" size={16} />
+                    <span>Review readiness</span>
+                    <Icon name="chevronRight" size={16} />
+                  </Button>
+                </form>
+              ) : (
+                <Button asChild intent="primary" size="lg" className="w-full sm:w-auto">
+                  <Link href={nextStepDetails.href}>
+                    <Icon name="mcp" size={16} />
+                    <span>{nextStepDetails.actionLabel}</span>
+                    <Icon name="chevronRight" size={16} />
+                  </Link>
+                </Button>
+              )}
             </div>
           </div>
 

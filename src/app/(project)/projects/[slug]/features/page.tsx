@@ -93,9 +93,19 @@ export default async function ProjectFeaturesPage({
             <h1 className="text-title-lg font-serif text-foreground">Features</h1>
             <span className="text-mono-sm text-foreground-muted">({allFeatures.length} discovered)</span>
             {pendingCount > 0 ? (
-              <Badge tone="ai" icon="needsReview">
-                {pendingCount} need{pendingCount === 1 ? "s" : ""} review
-              </Badge>
+              <Link
+                href={
+                  statusFilter === "needsReview"
+                    ? `/projects/${project.slug}/features`
+                    : `/projects/${project.slug}/features?status=needsReview`
+                }
+                className="transition-fast hover:opacity-85 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring rounded-pill"
+                title={statusFilter === "needsReview" ? "Clear review filter" : "Filter by needs review"}
+              >
+                <Badge tone="ai" icon="needsReview" className="cursor-pointer">
+                  {pendingCount} need{pendingCount === 1 ? "s" : ""} review
+                </Badge>
+              </Link>
             ) : null}
           </div>
           <p className="text-body text-foreground-secondary">

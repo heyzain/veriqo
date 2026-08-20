@@ -74,18 +74,20 @@ export function ProjectTopBar({
         </nav>
       </div>
 
-      {/* Right: Search, Connection Badge & Activity */}
+      {/* Right: Search & Connection Badge */}
       <div className="flex items-center gap-3">
         {/* Search Trigger */}
         <button
           type="button"
           onClick={onOpenSearch}
-          className="flex items-center gap-2 rounded-md border border-subtle bg-surface px-2.5 py-1 text-body-sm text-foreground-muted transition-fast hover:bg-inset hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
+          className="flex items-center justify-between gap-3 min-w-[220px] rounded-md border border-subtle bg-surface px-3 py-1.5 text-body-sm text-foreground-muted transition-fast hover:bg-inset hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring shadow-xs"
           aria-label="Search project (Command + K)"
         >
-          <Icon name="search" size={14} className="shrink-0" />
-          <span className="hidden sm:inline text-[13px]">Search...</span>
-          <kbd className="hidden sm:inline-flex items-center rounded border border-subtle bg-inset px-1 py-0.2 text-[10px] text-foreground-muted font-mono">
+          <div className="flex items-center gap-2">
+            <Icon name="search" size={14} className="shrink-0 text-foreground-muted" />
+            <span className="text-[13px] text-foreground-muted">Search...</span>
+          </div>
+          <kbd className="hidden sm:inline-flex items-center rounded border border-subtle bg-inset px-1.5 py-0.5 text-[10px] text-foreground-muted font-mono">
             ⌘K
           </kbd>
         </button>
@@ -93,20 +95,10 @@ export function ProjectTopBar({
         {/* Refresh Data Button */}
         <RefreshButton variant="icon" label="Refresh page data" size="sm" intent="ghost" />
 
-        {/* Claude Connection Badge */}
+        {/* MCP Connection Badge */}
         <div className="hidden sm:block">
           <ConnectionBadge status={mcpStatus} projectSlug={project.slug} />
         </div>
-
-        {/* Last Activity indicator */}
-        {lastActivity && (
-          <div className="hidden lg:flex items-center gap-1.5 text-mono-sm text-foreground-muted text-[11px]">
-            <span className="h-1.5 w-1.5 rounded-full bg-foreground-muted/40" />
-            <span className="truncate max-w-[180px]">
-              {lastActivity.actorName}: {lastActivity.action}
-            </span>
-          </div>
-        )}
       </div>
     </header>
   );

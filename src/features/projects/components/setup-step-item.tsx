@@ -63,6 +63,8 @@ export function getStepDestination(stepNumber: number, projectSlug: string): {
   }
 }
 
+import { completeSetupStepAction } from "@/features/projects/actions";
+
 export function SetupStepItem({
   step,
   currentCompletedSteps,
@@ -129,12 +131,23 @@ export function SetupStepItem({
       {/* Action Button */}
       <div className="flex items-center gap-2 self-end sm:self-center shrink-0">
         {isNextAction ? (
-          <Button asChild intent="primary" size="sm">
-            <Link href={href}>
-              <span>{actionLabel}</span>
-              <Icon name="chevronRight" size={14} />
-            </Link>
-          </Button>
+          step.step === 7 ? (
+            <form action={completeSetupStepAction}>
+              <input type="hidden" name="slug" value={projectSlug} />
+              <input type="hidden" name="step" value="7" />
+              <Button type="submit" intent="primary" size="sm">
+                <span>{actionLabel}</span>
+                <Icon name="chevronRight" size={14} />
+              </Button>
+            </form>
+          ) : (
+            <Button asChild intent="primary" size="sm">
+              <Link href={href}>
+                <span>{actionLabel}</span>
+                <Icon name="chevronRight" size={14} />
+              </Link>
+            </Button>
+          )
         ) : (
           <Button asChild intent="ghost" size="sm">
             <Link href={href} className="text-foreground-muted hover:text-foreground">
