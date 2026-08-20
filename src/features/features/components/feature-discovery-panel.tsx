@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 
 import { AgentActivityStream } from "@/components/shared/agent-activity-stream";
 import { CopyBlock } from "@/components/shared/copy-block";
+import { RefreshButton } from "@/components/shared/refresh-button";
 import { Badge } from "@/components/ui/badge";
 import { Icon } from "@/components/ui/icon";
 import { pollFeatureDiscoveryActivityAction } from "@/features/features/actions";
@@ -54,7 +55,7 @@ export function FeatureDiscoveryPanel({ projectSlug, context }: FeatureDiscovery
       if (incoming.length > 0) {
         setNewEventIds(new Set(incoming.map((event) => event.id)));
         window.setTimeout(() => setNewEventIds(new Set()), 1200);
-        if (copiedAt) router.refresh(); // a fresh feature/update landed — refresh the records table below
+        router.refresh(); // a fresh feature/update landed — refresh the records table below
       }
     }
 
@@ -64,17 +65,18 @@ export function FeatureDiscoveryPanel({ projectSlug, context }: FeatureDiscovery
       cancelled = true;
       window.clearInterval(interval);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [projectSlug, copiedAt]);
+  }, [projectSlug, router]);
+
+  const agentEvents = useMemo(() => events.filter((event) => event.actorType === "claude"), [events]);
 
   const eventsSinceCopy = copiedAt
-    ? events.filter((event) => new Date(event.createdAt).getTime() > new Date(copiedAt).getTime())
-    : [];
+    ? agentEvents.filter((event) => new Date(event.createdAt).getTime() > new Date(copiedAt).getTime())
+    : agentEvents;
   // `events` only ever grows while this panel is mounted, so this count is
   // monotonic — safe to derive directly each render instead of latching it
   // into its own state.
   const newFeatureCountSinceCopy = eventsSinceCopy.filter(
-    (event) => event.actorType === "claude" && event.action.startsWith("discovered "),
+    (event) => event.action.startsWith("discovered "),
   ).length;
 
   const state: GenerationState = !copiedAt
@@ -134,11 +136,24 @@ export function FeatureDiscoveryPanel({ projectSlug, context }: FeatureDiscovery
       ) : null}
 
       <div className="flex flex-col gap-2">
-        <h3 className="text-title-md text-foreground">Agent activity</h3>
+        <div className="flex items-center justify-between">
+          <h3 className="text-title-md text-foreground">Agent activity</h3>
+          <RefreshButton
+            label="Refresh activity"
+            size="sm"
+            onRefresh={async () => {
+              const result = await pollFeatureDiscoveryActivityAction(projectSlug, LOOKBACK_ISO);
+              if (result) {
+                setEvents(result.events);
+                router.refresh();
+              }
+            }}
+          />
+        </div>
         <AgentActivityStream
-          activity={events}
+          activity={agentEvents}
           newEventIds={newEventIds}
-          emptyTitle="No feature activity yet"
+          emptyTitle="No agent activity yet"
           emptyDescription="Once Claude runs the prompt above, discovery and review activity for this project appears here."
         />
       </div>

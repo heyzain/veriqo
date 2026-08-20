@@ -14,7 +14,7 @@ const explanationByStatus: Record<McpConnectionStatus, string> = {
   notConfigured:
     "Generate a project credential below, then connect Claude Code or Claude Desktop using the instructions underneath.",
   pendingFirstConnection:
-    "A credential exists, but Claude hasn't connected with it yet. Follow the setup instructions below, or use “Test connection now” from the credential dialog.",
+    "A credential exists, but Claude hasn't connected with it yet. Follow the setup instructions below to configure and test the connection.",
   connected: "Claude can read this project's QA context and verify requests through MCP.",
   error:
     "The most recent connection attempt failed. Check the value was copied correctly, or regenerate the credential below.",

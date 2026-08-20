@@ -6,17 +6,17 @@ import { cn } from "@/lib/utils/cn";
 import type { StatusTone } from "@/config/status.config";
 
 const badgeStyles = cva(
-  "inline-flex items-center gap-1.5 rounded-pill px-2.5 py-1 text-label-style",
+  "inline-flex items-center whitespace-nowrap gap-1.5 rounded-pill px-2.5 py-0.5 text-[11px] font-medium leading-relaxed tracking-normal",
   {
     variants: {
       tone: {
-        pass: "bg-pass/10 text-pass",
-        fail: "bg-fail/10 text-fail",
-        partial: "bg-partial/10 text-partial",
-        blocked: "bg-blocked/10 text-blocked",
-        progress: "bg-progress/10 text-progress",
-        ai: "bg-ai/10 text-ai",
-        neutral: "bg-inset text-foreground-muted",
+        pass: "bg-pass/12 text-pass border border-pass/25",
+        fail: "bg-fail/12 text-fail border border-fail/25",
+        partial: "bg-partial/12 text-partial border border-partial/25",
+        blocked: "bg-blocked/12 text-blocked border border-blocked/25",
+        progress: "bg-progress/12 text-progress border border-progress/25",
+        ai: "bg-ai/12 text-ai border border-ai/25",
+        neutral: "bg-inset text-foreground-muted border border-subtle",
       } satisfies Record<StatusTone, string>,
     },
     defaultVariants: {
@@ -36,9 +36,16 @@ export type BadgeProps = React.HTMLAttributes<HTMLSpanElement> &
  * design"). Domain status wording/tone/icon comes from status.config.ts.
  */
 export function Badge({ className, tone, icon, children, ...props }: BadgeProps) {
+  const isSpinning = icon === "inProgress" || icon === "spinner";
   return (
     <span className={cn(badgeStyles({ tone }), className)} {...props}>
-      {icon ? <Icon name={icon} size={12} /> : null}
+      {icon ? (
+        <Icon
+          name={icon}
+          size={12}
+          className={cn("shrink-0", isSpinning && "animate-spin")}
+        />
+      ) : null}
       {children}
     </span>
   );

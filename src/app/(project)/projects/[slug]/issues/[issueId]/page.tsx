@@ -170,7 +170,12 @@ export default async function IssueDetailPage({
             {testCase ? (
               <div className="flex flex-col gap-1">
                 <span className="text-label-style text-foreground-muted">Test case</span>
-                <EntityLink publicId={testCase.publicId} icon="testCases" title={testCase.title} />
+                <EntityLink
+                  publicId={testCase.publicId}
+                  icon="testCases"
+                  title={testCase.title}
+                  href={`/projects/${project.slug}/test-cases/${testCase.publicId}`}
+                />
                 <p className="text-body-sm text-foreground-muted">{testCase.title}</p>
               </div>
             ) : null}

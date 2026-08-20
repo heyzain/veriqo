@@ -13,7 +13,6 @@ import {
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogFooter } from "@/components/ui/dialog";
 import { Icon } from "@/components/ui/icon";
-import { toast } from "@/components/ui/toast";
 import {
   issueMcpCredentialAction,
   revokeMcpCredentialAction,
@@ -29,8 +28,6 @@ export type McpCredentialPanelProps = {
   credential: PublicMcpCredential | null;
 };
 
-type TestResult = { ok: boolean; message: string };
-
 /**
  * Owns the full credential lifecycle in one place: generate, regenerate,
  * revoke, and the reveal-once dialog where the plaintext secret is shown
@@ -45,8 +42,6 @@ export function McpCredentialPanel({ projectSlug, credential }: McpCredentialPan
     issueMcpCredentialAction,
     idleState<IssueCredentialValues>(),
   );
-  const [testResult, setTestResult] = useState<TestResult | null>(null);
-  const [testing, setTesting] = useState(false);
 
   // Derived, not effect-driven: the freshest issued secret is shown until
   // its own value is recorded as dismissed. Comparing by value (not a
@@ -56,33 +51,8 @@ export function McpCredentialPanel({ projectSlug, credential }: McpCredentialPan
   const latestSecret = state.status === "success" ? (state.meta?.secret ?? null) : null;
   const revealedSecret = latestSecret && latestSecret !== dismissedSecret ? latestSecret : null;
 
-  async function testConnection(secret: string) {
-    setTesting(true);
-    setTestResult(null);
-    try {
-      const response = await fetch(`/api/mcp/${projectSlug}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${secret}` },
-        body: JSON.stringify({ tool: "health_check" }),
-      });
-      const data = (await response.json()) as { ok: boolean; error?: string };
-      if (response.ok && data.ok) {
-        setTestResult({ ok: true, message: "Connection verified — Claude MCP responded successfully." });
-        toast({ title: "Connection verified", variant: "pass" });
-        router.refresh();
-      } else {
-        setTestResult({ ok: false, message: data.error ?? "The connection test failed." });
-      }
-    } catch {
-      setTestResult({ ok: false, message: "Network error while testing the connection. Check the endpoint and try again." });
-    } finally {
-      setTesting(false);
-    }
-  }
-
   function closeRevealDialog() {
     if (revealedSecret) setDismissedSecret(revealedSecret);
-    setTestResult(null);
     router.refresh();
   }
 
@@ -229,36 +199,9 @@ export function McpCredentialPanel({ projectSlug, credential }: McpCredentialPan
             <div className="flex flex-col gap-4">
               <McpCommandBlock label="MCP credential" value={revealedSecret} />
 
-              <div className="flex flex-col gap-2">
-                <Button
-                  type="button"
-                  intent="secondary"
-                  size="sm"
-                  onClick={() => testConnection(revealedSecret)}
-                  disabled={testing}
-                >
-                  <Icon
-                    name={testing ? "spinner" : "mcp"}
-                    size={14}
-                    className={testing ? "animate-spin" : undefined}
-                  />
-                  <span>{testing ? "Testing connection…" : "Test connection now"}</span>
-                </Button>
-
-                {testResult ? (
-                  <div
-                    role="status"
-                    className={`flex items-start gap-2 rounded-md border p-3 text-body-sm ${
-                      testResult.ok
-                        ? "border-pass/30 bg-pass/10 text-pass"
-                        : "border-fail/30 bg-fail/10 text-fail"
-                    }`}
-                  >
-                    <Icon name={testResult.ok ? "approved" : "fail"} size={15} className="mt-0.5 shrink-0" />
-                    <span>{testResult.message}</span>
-                  </div>
-                ) : null}
-              </div>
+              <p className="text-body-sm text-foreground-muted">
+                Copy this credential, then follow the setup steps on the page below to configure and test your connection.
+              </p>
 
               <DialogFooter>
                 <Button type="button" intent="primary" onClick={closeRevealDialog}>

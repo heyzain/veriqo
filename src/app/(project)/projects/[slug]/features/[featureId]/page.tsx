@@ -114,7 +114,13 @@ export default async function FeatureDetailPage({
             {testCases.length > 0 ? (
               <div className="flex flex-wrap gap-1.5 pt-1">
                 {testCases.map((testCase) => (
-                  <EntityLink key={testCase.id} publicId={testCase.publicId} icon="testCases" title={testCase.title} />
+                  <EntityLink
+                    key={testCase.id}
+                    publicId={testCase.publicId}
+                    icon="testCases"
+                    title={testCase.title}
+                    href={`/projects/${project.slug}/test-cases/${testCase.publicId}`}
+                  />
                 ))}
               </div>
             ) : (

@@ -114,6 +114,7 @@ export function TestCaseRecordTable({
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [selected, setSelected] = useState<ReadonlySet<string>>(new Set());
+  const [activeBulkAction, setActiveBulkAction] = useState<"approve" | "archive" | null>(null);
   const [editing, setEditing] = useState<TestCase | null>(null);
 
   function toggleSelected(publicId: string, checked: boolean) {
@@ -129,14 +130,34 @@ export function TestCaseRecordTable({
     startTransition(async () => {
       try {
         await submitAction(action, { projectSlug: project.slug, testCaseId: publicId, redirectTo: currentUrl });
+        setSelected((prev) => {
+          if (!prev.has(publicId)) return prev;
+          const next = new Set(prev);
+          next.delete(publicId);
+          return next;
+        });
       } catch (error) {
-        if (!isRedirectError(error)) toast({ title: errorTitle, variant: "fail" });
+        if (!isRedirectError(error)) {
+          toast({ title: errorTitle, variant: "fail" });
+        } else {
+          setSelected((prev) => {
+            if (!prev.has(publicId)) return prev;
+            const next = new Set(prev);
+            next.delete(publicId);
+            return next;
+          });
+        }
       }
     });
   }
 
-  function runBulkAction(action: (formData: FormData) => Promise<void>, errorTitle: string) {
+  function runBulkAction(
+    type: "approve" | "archive",
+    action: (formData: FormData) => Promise<void>,
+    errorTitle: string,
+  ) {
     if (selected.size === 0) return;
+    setActiveBulkAction(type);
     startTransition(async () => {
       try {
         await submitAction(action, {
@@ -146,7 +167,13 @@ export function TestCaseRecordTable({
         });
         setSelected(new Set());
       } catch (error) {
-        if (!isRedirectError(error)) toast({ title: errorTitle, variant: "fail" });
+        if (!isRedirectError(error)) {
+          toast({ title: errorTitle, variant: "fail" });
+        } else {
+          setSelected(new Set());
+        }
+      } finally {
+        setActiveBulkAction(null);
       }
     });
   }
@@ -179,19 +206,31 @@ export function TestCaseRecordTable({
     <div className="flex flex-col gap-4">
       {selected.size > 0 ? (
         <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-strong bg-inset/50 px-4 py-2.5">
-          <span className="text-body-sm font-medium text-foreground">
-            {selected.size} test case{selected.size === 1 ? "" : "s"} selected
-          </span>
+          <div className="flex items-center gap-3">
+            <span className="text-body-sm font-medium text-foreground">
+              {selected.size} test case{selected.size === 1 ? "" : "s"} selected
+            </span>
+            <Button
+              type="button"
+              intent="ghost"
+              size="sm"
+              disabled={isPending}
+              onClick={() => setSelected(new Set())}
+            >
+              Clear selection
+            </Button>
+          </div>
           <div className="flex items-center gap-2">
             <Button
               type="button"
               intent="secondary"
               size="sm"
+              loading={activeBulkAction === "approve"}
               disabled={isPending}
-              onClick={() => runBulkAction(bulkApproveTestCasesAction, "Couldn't approve the selected test cases")}
+              onClick={() => runBulkAction("approve", bulkApproveTestCasesAction, "Couldn't approve the selected test cases")}
             >
-              <Icon name="approved" size={14} />
-              <span>Approve</span>
+              {activeBulkAction !== "approve" ? <Icon name="approved" size={14} /> : null}
+              <span>{activeBulkAction === "approve" ? "Approving..." : "Approve"}</span>
             </Button>
             <Button asChild intent="secondary" size="sm">
               <Link href={addToRunHref}>
@@ -203,41 +242,66 @@ export function TestCaseRecordTable({
               type="button"
               intent="ghost"
               size="sm"
+              loading={activeBulkAction === "archive"}
               disabled={isPending}
-              onClick={() => runBulkAction(bulkArchiveTestCasesAction, "Couldn't archive the selected test cases")}
+              onClick={() => runBulkAction("archive", bulkArchiveTestCasesAction, "Couldn't archive the selected test cases")}
             >
-              <Icon name="archived" size={14} />
-              <span>Archive</span>
+              {activeBulkAction !== "archive" ? <Icon name="archived" size={14} /> : null}
+              <span>{activeBulkAction === "archive" ? "Archiving..." : "Archive"}</span>
             </Button>
           </div>
         </div>
       ) : null}
 
-      {groups.map((group) => (
-        <div key={group.key} className="flex flex-col gap-2">
-          {group.label ? (
-            <div className="flex items-center gap-2 pt-2">
-              <h3 className="text-label-style text-foreground-muted uppercase tracking-wider">{group.label}</h3>
-              <span className="text-mono-sm text-foreground-muted">({group.testCases.length})</span>
-            </div>
-          ) : null}
+      {groups.map((group) => {
+        const groupTestCaseIds = group.testCases.map((tc) => tc.publicId);
+        const isGroupAllSelected =
+          groupTestCaseIds.length > 0 && groupTestCaseIds.every((id) => selected.has(id));
+        const isGroupSomeSelected =
+          !isGroupAllSelected && groupTestCaseIds.some((id) => selected.has(id));
 
-          {/* Desktop table */}
-          <div className="hidden overflow-hidden rounded-lg border border-subtle bg-surface shadow-sm md:block">
-            <div className="overflow-x-auto">
-              <table className="w-full border-collapse text-left">
-                <thead>
-                  <tr className="border-b border-subtle bg-inset/40 text-label-style text-foreground-muted">
-                    <th className="w-10 px-4 py-3">
-                      <span className="sr-only">Select</span>
-                    </th>
-                    <th className="px-4 py-3">Code</th>
-                    <th className="px-4 py-3">Test case</th>
-                    {grouping !== "feature" ? <th className="px-4 py-3">Feature</th> : null}
-                    <th className="px-4 py-3">Priority</th>
-                    <th className="px-4 py-3">Review state</th>
-                    <th className="px-4 py-3">Environments</th>
-                    <th className="w-24 px-4 py-3">
+        function toggleSelectGroup() {
+          setSelected((prev) => {
+            const next = new Set(prev);
+            if (isGroupAllSelected) {
+              for (const id of groupTestCaseIds) next.delete(id);
+            } else {
+              for (const id of groupTestCaseIds) next.add(id);
+            }
+            return next;
+          });
+        }
+
+        return (
+          <div key={group.key} className="flex flex-col gap-2">
+            {group.label ? (
+              <div className="flex items-center gap-2 pt-2">
+                <h3 className="text-label-style text-foreground-muted uppercase tracking-wider">{group.label}</h3>
+                <span className="text-mono-sm text-foreground-muted">({group.testCases.length})</span>
+              </div>
+            ) : null}
+
+            {/* Desktop table */}
+            <div className="hidden overflow-hidden rounded-lg border border-subtle bg-surface shadow-sm md:block">
+              <div className="overflow-x-auto">
+                <table className="w-full border-collapse text-left">
+                  <thead>
+                    <tr className="border-b border-subtle bg-inset/50 text-[11px] font-semibold uppercase tracking-wider text-foreground-muted">
+                      <th className="w-12 px-4 py-3 text-center">
+                        <Checkbox
+                          label={group.label ? `Select all test cases in ${group.label}` : "Select all test cases"}
+                          hideLabel
+                          checked={isGroupAllSelected ? true : isGroupSomeSelected ? "indeterminate" : false}
+                          onCheckedChange={toggleSelectGroup}
+                        />
+                      </th>
+                    <th className="w-28 px-4 py-3 whitespace-nowrap">Code</th>
+                    <th className="min-w-[260px] px-4 py-3">Test case</th>
+                    {grouping !== "feature" ? <th className="w-36 px-4 py-3 whitespace-nowrap">Feature</th> : null}
+                    <th className="w-32 px-4 py-3 whitespace-nowrap">Priority</th>
+                    <th className="w-36 px-4 py-3 whitespace-nowrap">Review state</th>
+                    <th className="w-36 px-4 py-3 whitespace-nowrap">Environments</th>
+                    <th className="w-24 px-4 py-3 text-right">
                       <span className="sr-only">Actions</span>
                     </th>
                   </tr>
@@ -252,7 +316,7 @@ export function TestCaseRecordTable({
 
                     return (
                       <tr key={testCase.id} className="transition-fast hover:bg-inset/30">
-                        <td className="px-4 py-3.5 align-top">
+                        <td className="px-4 py-3.5 align-middle text-center">
                           <Checkbox
                             label={`Select ${testCase.publicId}`}
                             hideLabel
@@ -260,12 +324,22 @@ export function TestCaseRecordTable({
                             onCheckedChange={(checked) => toggleSelected(testCase.publicId, checked === true)}
                           />
                         </td>
-                        <td className="px-4 py-3.5 align-top text-mono-sm font-semibold text-foreground-muted">
-                          {testCase.publicId}
+                        <td className="px-4 py-3.5 align-middle whitespace-nowrap">
+                          <Link
+                            href={`/projects/${project.slug}/test-cases/${testCase.publicId}`}
+                            className="inline-flex items-center rounded border border-subtle bg-inset/70 px-2 py-0.5 font-mono text-[12px] font-semibold text-foreground tracking-tight hover:bg-inset hover:text-foreground transition-fast"
+                          >
+                            {testCase.publicId}
+                          </Link>
                         </td>
-                        <td className="px-4 py-3.5 align-top">
+                        <td className="px-4 py-3.5 align-middle">
                           <div className="flex flex-col gap-1">
-                            <span className="text-body-sm font-medium text-foreground">{testCase.title}</span>
+                            <Link
+                              href={`/projects/${project.slug}/test-cases/${testCase.publicId}`}
+                              className="text-body-sm font-medium text-foreground hover:underline"
+                            >
+                              {testCase.title}
+                            </Link>
                             <span className="line-clamp-1 text-body-sm text-foreground-muted">
                               {testCase.expectedResult}
                             </span>
@@ -283,7 +357,7 @@ export function TestCaseRecordTable({
                           </div>
                         </td>
                         {grouping !== "feature" ? (
-                          <td className="px-4 py-3.5 align-top">
+                          <td className="px-4 py-3.5 align-middle whitespace-nowrap">
                             {feature ? (
                               <EntityLink
                                 publicId={feature.publicId}
@@ -296,20 +370,20 @@ export function TestCaseRecordTable({
                             )}
                           </td>
                         ) : null}
-                        <td className="px-4 py-3.5 align-top">
+                        <td className="px-4 py-3.5 align-middle whitespace-nowrap">
                           <PriorityMark priority={testCase.priority} />
                         </td>
-                        <td className="px-4 py-3.5 align-top">
+                        <td className="px-4 py-3.5 align-middle whitespace-nowrap">
                           <StatusBadge status={testCaseStatuses[testCase.status]} />
                         </td>
-                        <td className="px-4 py-3.5 align-top">
+                        <td className="px-4 py-3.5 align-middle whitespace-nowrap">
                           {testCase.environments.length > 0 ? (
                             <span className="text-body-sm text-foreground-muted">{testCase.environments.join(", ")}</span>
                           ) : (
                             <span className="text-body-sm text-foreground-muted">—</span>
                           )}
                         </td>
-                        <td className="px-4 py-3.5 align-top">
+                        <td className="px-4 py-3.5 align-middle text-right">
                           <div className="flex items-center justify-end gap-1">
                             {canApprove ? (
                               <IconButton
@@ -326,6 +400,9 @@ export function TestCaseRecordTable({
                                 <IconButton icon="more" label={`More actions for ${testCase.publicId}`} intent="ghost" size="sm" />
                               </MenuTrigger>
                               <MenuContent align="end">
+                                <MenuItem icon="eye" onSelect={() => router.push(`/projects/${project.slug}/test-cases/${testCase.publicId}`)}>
+                                  View details
+                                </MenuItem>
                                 <MenuItem icon="draft" onSelect={() => setEditing(testCase)}>
                                   Edit details
                                 </MenuItem>
@@ -396,9 +473,12 @@ export function TestCaseRecordTable({
                         onCheckedChange={(checked) => toggleSelected(testCase.publicId, checked === true)}
                       />
                       <div className="flex flex-col gap-1 min-w-0">
-                        <span className="text-body-sm font-semibold text-foreground">
+                        <Link
+                          href={`/projects/${project.slug}/test-cases/${testCase.publicId}`}
+                          className="text-body-sm font-semibold text-foreground hover:underline"
+                        >
                           {testCase.publicId} — {testCase.title}
-                        </span>
+                        </Link>
                         {feature ? (
                           <span className="text-body-sm text-foreground-muted">
                             {feature.publicId} — {feature.name}
@@ -463,7 +543,8 @@ export function TestCaseRecordTable({
             })}
           </div>
         </div>
-      ))}
+      );
+    })}
 
       {editing ? (
         <TestCaseEditDialog

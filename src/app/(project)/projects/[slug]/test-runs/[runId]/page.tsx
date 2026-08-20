@@ -186,7 +186,7 @@ export default async function TestRunDetailPage({
                           publicId={testCase.publicId}
                           icon="testCases"
                           title={testCase.title}
-                          href={`/projects/${project.slug}/test-cases`}
+                          href={`/projects/${project.slug}/test-cases/${testCase.publicId}`}
                         />
                         {feature ? (
                           <EntityLink

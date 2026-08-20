@@ -14,9 +14,10 @@ export type RiskMarkProps = {
 
 /** The one place risk-level → badge tone is decided (`RiskMark` in 01-DESIGN-SYSTEM.md). */
 export function RiskMark({ risk, className }: RiskMarkProps) {
+  const label = risk === "high" ? "High risk" : risk === "medium" ? "Medium risk" : "Low risk";
   return (
     <Badge tone={riskTone[risk]} className={className}>
-      {risk} risk
+      {label}
     </Badge>
   );
 }

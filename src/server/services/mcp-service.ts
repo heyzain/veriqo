@@ -184,9 +184,16 @@ async function recordConnectionAttempt(
 
 function extractBearerToken(header: string | null): string | null {
   if (!header) return null;
-  const [scheme, token] = header.split(" ");
-  if (scheme?.toLowerCase() !== "bearer" || !token) return null;
-  return token;
+  const trimmed = header.trim();
+  if (trimmed.toLowerCase().startsWith("bearer ")) {
+    return trimmed.slice(7).trim();
+  }
+  if (trimmed.startsWith(SECRET_PREFIX)) {
+    return trimmed;
+  }
+  const [scheme, token] = trimmed.split(" ");
+  if (scheme?.toLowerCase() === "bearer" && token) return token;
+  return null;
 }
 
 /**
@@ -198,7 +205,9 @@ function extractBearerToken(header: string | null): string | null {
  * if the body couldn't be read as JSON at all.
  */
 function extractMethodLabel(parsedBody: unknown): string {
-  if (!parsedBody || typeof parsedBody !== "object" || !("method" in parsedBody)) return "unknown";
+  if (!parsedBody || typeof parsedBody !== "object") return "unknown";
+  if ("tool" in parsedBody) return String((parsedBody as { tool?: unknown }).tool ?? "health_check");
+  if (!("method" in parsedBody)) return "unknown";
   const method = String((parsedBody as { method?: unknown }).method ?? "unknown");
   if (method !== "tools/call" || !("params" in parsedBody)) return method;
   const params = (parsedBody as { params?: unknown }).params;
@@ -286,6 +295,23 @@ export async function handleMcpRequest(
     );
   }
 
+  // Non-JSON-RPC requests (curl, health checks, pings, simple POSTs) that authenticated
+  // successfully are treated as verification / health checks and marked connected.
+  const isJsonRpc = Boolean(
+    parsedBody &&
+    typeof parsedBody === "object" &&
+    "jsonrpc" in parsedBody
+  );
+
+  if (!isJsonRpc) {
+    return Response.json({
+      ok: true,
+      status: "connected",
+      message: "Connection verified — Veriqo Claude MCP responded successfully.",
+      project: { id: currentProject.id, name: currentProject.name, slug: currentProject.slug },
+    });
+  }
+
   const server = buildMcpServer(currentProject, active.id);
   const transport = new WebStandardStreamableHTTPServerTransport({
     sessionIdGenerator: undefined,
@@ -293,5 +319,17 @@ export async function handleMcpRequest(
   });
   await server.connect(transport);
 
-  return transport.handleRequest(request, { parsedBody });
+  // Ensure accept header is compatible with MCP Streamable HTTP transport
+  const acceptHeader = request.headers.get("accept") ?? "";
+  let mcpRequest = request;
+  if (!acceptHeader.includes("application/json") || !acceptHeader.includes("text/event-stream")) {
+    const headers = new Headers(request.headers);
+    headers.set("accept", "application/json, text/event-stream");
+    mcpRequest = new Request(request.url, {
+      method: request.method,
+      headers,
+    });
+  }
+
+  return transport.handleRequest(mcpRequest, { parsedBody });
 }

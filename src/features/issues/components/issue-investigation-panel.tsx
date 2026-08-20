@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 
 import { AgentActivityStream } from "@/components/shared/agent-activity-stream";
 import { CopyBlock } from "@/components/shared/copy-block";
+import { RefreshButton } from "@/components/shared/refresh-button";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Icon } from "@/components/ui/icon";
@@ -69,7 +70,7 @@ export function IssueInvestigationPanel({ projectSlug, issuePublicId, status, fi
       if (incoming.length > 0) {
         setNewEventIds(new Set(incoming.map((event) => event.id)));
         window.setTimeout(() => setNewEventIds(new Set()), 1200);
-        if (copiedAt) router.refresh(); // a status change/fix note landed — refresh the page state above (badges, forms)
+        router.refresh(); // a status change/fix note landed — refresh the page state above (badges, forms)
       }
     }
 
@@ -79,8 +80,7 @@ export function IssueInvestigationPanel({ projectSlug, issuePublicId, status, fi
       cancelled = true;
       window.clearInterval(interval);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [projectSlug, issuePublicId, copiedAt]);
+  }, [projectSlug, issuePublicId, router]);
 
   const eventsSinceCopy = copiedAt
     ? events.filter((event) => new Date(event.createdAt).getTime() > new Date(copiedAt).getTime())
@@ -187,7 +187,20 @@ export function IssueInvestigationPanel({ projectSlug, issuePublicId, status, fi
       ) : null}
 
       <div className="flex flex-col gap-2">
-        <h3 className="text-title-md text-foreground">Activity</h3>
+        <div className="flex items-center justify-between">
+          <h3 className="text-title-md text-foreground">Activity</h3>
+          <RefreshButton
+            label="Refresh activity"
+            size="sm"
+            onRefresh={async () => {
+              const result = await pollIssueActivityAction(projectSlug, issuePublicId, LOOKBACK_ISO);
+              if (result) {
+                setEvents(result.events);
+                router.refresh();
+              }
+            }}
+          />
+        </div>
         <AgentActivityStream
           activity={events}
           newEventIds={newEventIds}

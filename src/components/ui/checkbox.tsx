@@ -17,28 +17,31 @@ export type CheckboxProps = React.ComponentPropsWithoutRef<
 export const Checkbox = React.forwardRef<
   React.ComponentRef<typeof RadixCheckbox.Root>,
   CheckboxProps
->(({ id, label, description, hideLabel, className, ...props }, ref) => {
+>(({ id, label, description, hideLabel, className, checked, ...props }, ref) => {
   const generatedId = React.useId();
   const checkboxId = id ?? generatedId;
   const descriptionId = description ? `${checkboxId}-description` : undefined;
+  const isIndeterminate = checked === "indeterminate";
 
   return (
     <div className="flex items-start gap-2.5">
       <RadixCheckbox.Root
         ref={ref}
         id={checkboxId}
+        checked={checked}
         className={cn(
           "mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-xs border border-strong bg-raised",
           "transition-fast focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring",
           "data-[state=checked]:border-action data-[state=checked]:bg-action",
+          "data-[state=indeterminate]:border-action data-[state=indeterminate]:bg-action",
           "disabled:cursor-not-allowed disabled:opacity-60",
           className,
         )}
         aria-describedby={descriptionId}
         {...props}
       >
-        <RadixCheckbox.Indicator className="text-foreground-on-dark">
-          <Icon name="check" size={13} />
+        <RadixCheckbox.Indicator className="text-foreground-on-dark flex items-center justify-center">
+          <Icon name={isIndeterminate ? "minus" : "check"} size={13} />
         </RadixCheckbox.Indicator>
       </RadixCheckbox.Root>
       <div className="flex flex-col gap-0.5">

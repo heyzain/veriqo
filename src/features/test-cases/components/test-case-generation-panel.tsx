@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 
 import { AgentActivityStream } from "@/components/shared/agent-activity-stream";
 import { CopyBlock } from "@/components/shared/copy-block";
+import { RefreshButton } from "@/components/shared/refresh-button";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Icon } from "@/components/ui/icon";
@@ -223,7 +224,20 @@ export function TestCaseGenerationPanel({
       ) : null}
 
       <div className="flex flex-col gap-2">
-        <h3 className="text-title-md text-foreground">Agent activity</h3>
+        <div className="flex items-center justify-between">
+          <h3 className="text-title-md text-foreground">Agent activity</h3>
+          <RefreshButton
+            label="Refresh activity"
+            size="sm"
+            onRefresh={async () => {
+              const result = await pollTestCaseGenerationActivityAction(projectSlug, LOOKBACK_ISO);
+              if (result) {
+                setEvents(result.events);
+                router.refresh();
+              }
+            }}
+          />
+        </div>
         <AgentActivityStream
           activity={events}
           newEventIds={newEventIds}

@@ -77,9 +77,19 @@ export function IssueRecordList({ project, issues, features, testCases, hasActiv
     <div className="flex flex-col gap-4">
       {readyIds.length > 0 ? (
         <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-strong bg-inset/50 px-4 py-2.5">
-          <span className="text-body-sm font-medium text-foreground">
-            {readyIds.length} ready for retest selected
-          </span>
+          <div className="flex items-center gap-3">
+            <span className="text-body-sm font-medium text-foreground">
+              {readyIds.length} ready for retest selected
+            </span>
+            <Button
+              type="button"
+              intent="ghost"
+              size="sm"
+              onClick={() => setSelected(new Set())}
+            >
+              Clear selection
+            </Button>
+          </div>
           <Button type="button" intent="secondary" size="sm" onClick={() => setRerunDialogOpen(true)}>
             <Icon name="testRuns" size={14} />
             <span>Create focused rerun</span>
@@ -109,7 +119,7 @@ export function IssueRecordList({ project, issues, features, testCases, hasActiv
                 <div className="flex flex-wrap items-center gap-2.5">
                   <Link
                     href={`/projects/${project.slug}/issues/${issue.publicId}`}
-                    className="text-mono-sm font-semibold text-foreground-muted hover:text-foreground"
+                    className="inline-flex items-center rounded border border-subtle bg-inset/70 px-2 py-0.5 font-mono text-[12px] font-semibold text-foreground tracking-tight hover:bg-inset hover:text-foreground transition-fast"
                   >
                     {issue.publicId}
                   </Link>
@@ -133,7 +143,14 @@ export function IssueRecordList({ project, issues, features, testCases, hasActiv
                       href={`/projects/${project.slug}/features/${feature.publicId}`}
                     />
                   ) : null}
-                  {testCase ? <EntityLink publicId={testCase.publicId} icon="testCases" title={testCase.title} /> : null}
+                  {testCase ? (
+                    <EntityLink
+                      publicId={testCase.publicId}
+                      icon="testCases"
+                      title={testCase.title}
+                      href={`/projects/${project.slug}/test-cases/${testCase.publicId}`}
+                    />
+                  ) : null}
                 </div>
 
                 <p className="text-body-sm text-foreground-muted">

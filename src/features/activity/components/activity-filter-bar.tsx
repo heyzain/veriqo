@@ -3,6 +3,7 @@
 import { useRef } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
+import { RefreshButton } from "@/components/shared/refresh-button";
 import { Button } from "@/components/ui/button";
 import { Icon } from "@/components/ui/icon";
 import { Input } from "@/components/ui/input";
@@ -79,12 +80,15 @@ export function ActivityFilterBar() {
           options={entityTypeOptions}
         />
       </div>
-      {hasFilters ? (
-        <Button type="button" intent="ghost" size="sm" onClick={() => router.replace(pathname)}>
-          <Icon name="close" size={14} />
-          <span>Clear filters</span>
-        </Button>
-      ) : null}
+      <div className="flex items-center gap-2 self-end sm:self-auto">
+        <RefreshButton size="sm" intent="secondary" />
+        {hasFilters ? (
+          <Button type="button" intent="ghost" size="sm" onClick={() => router.replace(pathname)}>
+            <Icon name="close" size={14} />
+            <span>Clear filters</span>
+          </Button>
+        ) : null}
+      </div>
     </div>
   );
 }

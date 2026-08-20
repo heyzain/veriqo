@@ -98,6 +98,22 @@
   --color-ai: var(--status-ai);
   --color-neutral: var(--status-neutral);
 
+  /* Color primitives */
+  --color-forest: var(--forest-0);
+  --color-forest-0: var(--forest-0);
+  --color-forest-1: var(--forest-1);
+  --color-moss: var(--moss);
+  --color-marigold: var(--marigold);
+  --color-clay: var(--clay);
+  --color-sky: var(--sky);
+  --color-violet: var(--violet);
+  --color-paper-0: var(--paper-0);
+  --color-paper-1: var(--paper-1);
+  --color-paper-2: var(--paper-2);
+  --color-ink-0: var(--ink-0);
+  --color-ink-1: var(--ink-1);
+  --color-ink-2: var(--ink-2);
+
   --font-sans: var(--font-body);
   --font-serif: var(--font-display);
   --font-mono: var(--font-technical);

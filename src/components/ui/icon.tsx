@@ -28,6 +28,7 @@ import {
   ListTodo,
   Loader2,
   type LucideIcon,
+  Minus,
   MoreHorizontal,
   Paperclip,
   Pause,
@@ -88,6 +89,7 @@ const registry = {
 
   // Generic UI
   check: Check,
+  minus: Minus,
   close: X,
   chevronDown: ChevronDown,
   chevronUp: ChevronUp,

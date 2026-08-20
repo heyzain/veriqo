@@ -6,15 +6,20 @@ import { testGenerationPrompt } from "@/prompts/test-generation/prompt";
 import { nextTestCasePublicId, testCaseModulePrefix } from "@/lib/ids/test-case-identifiers";
 import { listActivityForProject, recordActivity } from "@/server/repositories/activity-repository";
 import {
+  findFeatureById,
   findFeatureByPublicId,
+  findTestCaseById,
   findTestCaseByPublicId,
+  findTestResult,
+  listIssuesForProject as repoListIssuesForProject,
   listTestCasesForProject as repoListTestCasesForProject,
+  listTestRunsForProject as repoListTestRunsForProject,
   saveTestCase,
   testCasePublicIdsWithPrefix,
 } from "@/server/repositories/project-repository";
 import { advanceSetupStep } from "@/server/services/project-service";
 import type { TestCasePriority, TestCaseStatus } from "@/config/status.config";
-import type { ActivityEvent, Project, TestCase } from "@/types/domain";
+import type { ActivityEvent, Feature, Issue, Project, TestCase, TestResult, TestRun } from "@/types/domain";
 
 /**
  * Business rules for the test-case inventory (Phase 5) — the same shape
@@ -520,3 +525,57 @@ export async function getTestCaseGenerationActivitySince(
 
   return { events, newTestCaseCount };
 }
+
+// ---- Detail page query ----
+
+export type TestCaseDetail = {
+  testCase: TestCase;
+  feature?: Feature;
+  duplicateOf?: TestCase;
+  runs: { testRun: TestRun; result: TestResult }[];
+  issues: Issue[];
+  activity: ActivityEvent[];
+};
+
+export async function getTestCaseDetail(project: Project, publicId: string): Promise<TestCaseDetail | null> {
+  const testCase = await findTestCaseByPublicId(project.id, publicId);
+  if (!testCase) return null;
+
+  const [feature, allTestCases, allRuns, allIssues, allActivity] = await Promise.all([
+    findFeatureById(project.id, testCase.featureId),
+    repoListTestCasesForProject(project.id),
+    repoListTestRunsForProject(project.id),
+    repoListIssuesForProject(project.id),
+    listActivityForProject(project.id),
+  ]);
+
+  const duplicateOf = testCase.possibleDuplicateOfId
+    ? allTestCases.find((tc) => tc.id === testCase.possibleDuplicateOfId)
+    : undefined;
+
+  const caseIssues = allIssues.filter((i) => i.testCaseId === testCase.id);
+
+  const runs: { testRun: TestRun; result: TestResult }[] = [];
+  for (const testRun of allRuns) {
+    if (testRun.selectedTestCaseIds.includes(testCase.id)) {
+      const result = await findTestResult(testRun.id, testCase.id);
+      if (result) runs.push({ testRun, result });
+    }
+  }
+
+  const activity = allActivity.filter(
+    (event) =>
+      (event.entityType === "testCase" && event.entityId === testCase.id) ||
+      event.relatedEntities?.some((r) => r.type === "testCase" && r.id === testCase.id),
+  );
+
+  return {
+    testCase,
+    feature: feature ?? undefined,
+    duplicateOf,
+    runs,
+    issues: caseIssues,
+    activity,
+  };
+}
+

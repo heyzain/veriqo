@@ -100,6 +100,7 @@ export function FeatureRecordTable({
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [selected, setSelected] = useState<ReadonlySet<string>>(new Set());
+  const [activeBulkAction, setActiveBulkAction] = useState<"approve" | "archive" | null>(null);
   const [editing, setEditing] = useState<Feature | null>(null);
   const [merging, setMerging] = useState<Feature | null>(null);
   const [regenerating, setRegenerating] = useState<Feature | null>(null);
@@ -117,17 +118,35 @@ export function FeatureRecordTable({
     startTransition(async () => {
       try {
         await submitAction(action, { projectSlug: project.slug, featureId: publicId, redirectTo: currentUrl });
+        setSelected((prev) => {
+          if (!prev.has(publicId)) return prev;
+          const next = new Set(prev);
+          next.delete(publicId);
+          return next;
+        });
       } catch (error) {
         // `redirect()` inside the action throws by design — only report a real failure.
         if (!isRedirectError(error)) {
           toast({ title: errorTitle, variant: "fail" });
+        } else {
+          setSelected((prev) => {
+            if (!prev.has(publicId)) return prev;
+            const next = new Set(prev);
+            next.delete(publicId);
+            return next;
+          });
         }
       }
     });
   }
 
-  function runBulkAction(action: (formData: FormData) => Promise<void>, errorTitle: string) {
+  function runBulkAction(
+    type: "approve" | "archive",
+    action: (formData: FormData) => Promise<void>,
+    errorTitle: string,
+  ) {
     if (selected.size === 0) return;
+    setActiveBulkAction(type);
     startTransition(async () => {
       try {
         await submitAction(action, {
@@ -139,7 +158,11 @@ export function FeatureRecordTable({
       } catch (error) {
         if (!isRedirectError(error)) {
           toast({ title: errorTitle, variant: "fail" });
+        } else {
+          setSelected(new Set());
         }
+      } finally {
+        setActiveBulkAction(null);
       }
     });
   }
@@ -170,60 +193,97 @@ export function FeatureRecordTable({
   return (
     <div className="flex flex-col gap-4">
       {selected.size > 0 ? (
-        <div className="flex items-center justify-between gap-3 rounded-md border border-strong bg-inset/50 px-4 py-2.5">
-          <span className="text-body-sm font-medium text-foreground">
-            {selected.size} feature{selected.size === 1 ? "" : "s"} selected
-          </span>
-          <div className="flex items-center gap-2">
-            <Button
-              type="button"
-              intent="secondary"
-              size="sm"
-              disabled={isPending}
-              onClick={() => runBulkAction(bulkApproveFeaturesAction, "Couldn't approve the selected features")}
-            >
-              <Icon name="approved" size={14} />
-              <span>Approve</span>
-            </Button>
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-strong bg-inset/50 px-4 py-2.5">
+          <div className="flex items-center gap-3">
+            <span className="text-body-sm font-medium text-foreground">
+              {selected.size} feature{selected.size === 1 ? "" : "s"} selected
+            </span>
             <Button
               type="button"
               intent="ghost"
               size="sm"
               disabled={isPending}
-              onClick={() => runBulkAction(bulkArchiveFeaturesAction, "Couldn't archive the selected features")}
+              onClick={() => setSelected(new Set())}
             >
-              <Icon name="archived" size={14} />
-              <span>Archive</span>
+              Clear selection
+            </Button>
+          </div>
+          <div className="flex items-center gap-2">
+            <Button
+              type="button"
+              intent="secondary"
+              size="sm"
+              loading={activeBulkAction === "approve"}
+              disabled={isPending}
+              onClick={() => runBulkAction("approve", bulkApproveFeaturesAction, "Couldn't approve the selected features")}
+            >
+              {activeBulkAction !== "approve" ? <Icon name="approved" size={14} /> : null}
+              <span>{activeBulkAction === "approve" ? "Approving..." : "Approve"}</span>
+            </Button>
+            <Button
+              type="button"
+              intent="ghost"
+              size="sm"
+              loading={activeBulkAction === "archive"}
+              disabled={isPending}
+              onClick={() => runBulkAction("archive", bulkArchiveFeaturesAction, "Couldn't archive the selected features")}
+            >
+              {activeBulkAction !== "archive" ? <Icon name="archived" size={14} /> : null}
+              <span>{activeBulkAction === "archive" ? "Archiving..." : "Archive"}</span>
             </Button>
           </div>
         </div>
       ) : null}
 
-      {groups.map((group) => (
-        <div key={group.label || "all"} className="flex flex-col gap-2">
-          {group.label ? (
-            <div className="flex items-center gap-2 pt-2">
-              <h3 className="text-label-style text-foreground-muted uppercase tracking-wider">{group.label}</h3>
-              <span className="text-mono-sm text-foreground-muted">({group.features.length})</span>
-            </div>
-          ) : null}
+      {groups.map((group) => {
+        const groupFeatureIds = group.features.map((f) => f.publicId);
+        const isGroupAllSelected =
+          groupFeatureIds.length > 0 && groupFeatureIds.every((id) => selected.has(id));
+        const isGroupSomeSelected =
+          !isGroupAllSelected && groupFeatureIds.some((id) => selected.has(id));
 
-          {/* Desktop table */}
-          <div className="hidden overflow-hidden rounded-lg border border-subtle bg-surface shadow-sm md:block">
-            <div className="overflow-x-auto">
-              <table className="w-full border-collapse text-left">
-                <thead>
-                  <tr className="border-b border-subtle bg-inset/40 text-label-style text-foreground-muted">
-                    <th className="w-10 px-4 py-3">
-                      <span className="sr-only">Select</span>
-                    </th>
-                    <th className="px-4 py-3">Code</th>
-                    <th className="px-4 py-3">Feature</th>
-                    <th className="px-4 py-3">Risk</th>
-                    <th className="px-4 py-3">Review state</th>
-                    <th className="px-4 py-3">Coverage</th>
-                    <th className="px-4 py-3">Issues</th>
-                    <th className="w-24 px-4 py-3">
+        function toggleSelectGroup() {
+          setSelected((prev) => {
+            const next = new Set(prev);
+            if (isGroupAllSelected) {
+              for (const id of groupFeatureIds) next.delete(id);
+            } else {
+              for (const id of groupFeatureIds) next.add(id);
+            }
+            return next;
+          });
+        }
+
+        return (
+          <div key={group.label || "all"} className="flex flex-col gap-2">
+            {group.label ? (
+              <div className="flex items-center gap-2 pt-2">
+                <h3 className="text-label-style text-foreground-muted uppercase tracking-wider">{group.label}</h3>
+                <span className="text-mono-sm text-foreground-muted">({group.features.length})</span>
+              </div>
+            ) : null}
+
+            {/* Desktop table */}
+            <div className="hidden overflow-hidden rounded-lg border border-subtle bg-surface shadow-sm md:block">
+              <div className="overflow-x-auto">
+                <table className="w-full border-collapse text-left">
+                  <thead>
+                    <tr className="border-b border-subtle bg-inset/50 text-[11px] font-semibold uppercase tracking-wider text-foreground-muted">
+                      <th className="w-12 px-4 py-3 text-center">
+                        <Checkbox
+                          label={group.label ? `Select all features in ${group.label}` : "Select all features"}
+                          hideLabel
+                          checked={isGroupAllSelected ? true : isGroupSomeSelected ? "indeterminate" : false}
+                          onCheckedChange={toggleSelectGroup}
+                        />
+                      </th>
+                    <th className="w-28 px-4 py-3 whitespace-nowrap">Code</th>
+                    <th className="min-w-[280px] px-4 py-3">Feature</th>
+                    <th className="w-32 px-4 py-3 whitespace-nowrap">Risk</th>
+                    <th className="w-36 px-4 py-3 whitespace-nowrap">Review state</th>
+                    <th className="w-36 px-4 py-3 whitespace-nowrap">Coverage</th>
+                    <th className="w-28 px-4 py-3 whitespace-nowrap">Issues</th>
+                    <th className="w-24 px-4 py-3 text-right">
                       <span className="sr-only">Actions</span>
                     </th>
                   </tr>
@@ -240,7 +300,7 @@ export function FeatureRecordTable({
 
                     return (
                       <tr key={feature.id} className="transition-fast hover:bg-inset/30">
-                        <td className="px-4 py-3.5 align-top">
+                        <td className="px-4 py-3.5 align-middle text-center">
                           <Checkbox
                             label={`Select ${feature.publicId}`}
                             hideLabel
@@ -248,12 +308,15 @@ export function FeatureRecordTable({
                             onCheckedChange={(checked) => toggleSelected(feature.publicId, checked === true)}
                           />
                         </td>
-                        <td className="px-4 py-3.5 align-top text-mono-sm font-semibold text-foreground-muted">
-                          <Link href={`/projects/${project.slug}/features/${feature.publicId}`} className="hover:underline">
+                        <td className="px-4 py-3.5 align-middle whitespace-nowrap">
+                          <Link
+                            href={`/projects/${project.slug}/features/${feature.publicId}`}
+                            className="inline-flex items-center rounded border border-subtle bg-inset/70 px-2 py-0.5 font-mono text-[12px] font-semibold text-foreground tracking-tight hover:bg-inset hover:text-foreground transition-fast"
+                          >
                             {feature.publicId}
                           </Link>
                         </td>
-                        <td className="px-4 py-3.5 align-top">
+                        <td className="px-4 py-3.5 align-middle">
                           <div className="flex flex-col gap-1">
                             <Link
                               href={`/projects/${project.slug}/features/${feature.publicId}`}
@@ -272,16 +335,16 @@ export function FeatureRecordTable({
                             </div>
                           </div>
                         </td>
-                        <td className="px-4 py-3.5 align-top">
+                        <td className="px-4 py-3.5 align-middle whitespace-nowrap">
                           <RiskMark risk={feature.risk} />
                         </td>
-                        <td className="px-4 py-3.5 align-top">
+                        <td className="px-4 py-3.5 align-middle whitespace-nowrap">
                           <StatusBadge status={featureStatuses[feature.status]} />
                         </td>
-                        <td className="px-4 py-3.5 align-top">
+                        <td className="px-4 py-3.5 align-middle whitespace-nowrap">
                           <CoverageBar testCases={testCases} />
                         </td>
-                        <td className="px-4 py-3.5 align-top">
+                        <td className="px-4 py-3.5 align-middle">
                           {issues.length > 0 ? (
                             <div className="flex flex-wrap gap-1.5">
                               {issues.map((issue) => (
@@ -292,7 +355,7 @@ export function FeatureRecordTable({
                             <span className="text-body-sm text-foreground-muted">—</span>
                           )}
                         </td>
-                        <td className="px-4 py-3.5 align-top">
+                        <td className="px-4 py-3.5 align-middle text-right">
                           <div className="flex items-center justify-end gap-1">
                             {canApprove ? (
                               <IconButton
@@ -433,7 +496,8 @@ export function FeatureRecordTable({
             })}
           </div>
         </div>
-      ))}
+      );
+    })}
 
       {editing ? (
         <FeatureEditDialog

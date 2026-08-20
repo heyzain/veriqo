@@ -22,6 +22,12 @@ const desktopConfigPaths = [
   { value: "linux", label: "Linux", path: "~/.config/Claude/claude_desktop_config.json" },
 ] as const;
 
+const shellOptions = [
+  { value: "bash", label: "macOS / Linux / Bash" },
+  { value: "powershell", label: "PowerShell (Windows)" },
+  { value: "cmd", label: "Command Prompt" },
+] as const;
+
 /**
  * Platform setup tabs (01-DESIGN-SYSTEM.md, "MCP setup" — "platform tabs,
  * readable command blocks"). Claude Code / Claude Desktop is the primary
@@ -32,6 +38,7 @@ const desktopConfigPaths = [
  */
 export function McpSetupInstructions({ projectSlug, projectName }: McpSetupInstructionsProps) {
   const [os, setOs] = useState<string>("macos");
+  const [shell, setShell] = useState<string>("powershell");
 
   const mcpServerKey = productConfig.name.toLowerCase();
   const mcpEndpoint = `${productConfig.urls.app}/api/mcp/${projectSlug}`;
@@ -40,6 +47,20 @@ export function McpSetupInstructions({ projectSlug, projectName }: McpSetupInstr
   // backtick for that instead, so a single copy-pasted block has to work
   // without either: one line is the only form every shell accepts as-is.
   const claudeCodeCommand = `claude mcp add --transport http ${mcpServerKey} ${mcpEndpoint} --header "Authorization: Bearer <YOUR_MCP_CREDENTIAL>"`;
+
+  const getTestCommand = (selectedShell: string) => {
+    switch (selectedShell) {
+      case "powershell":
+        return `Invoke-RestMethod -Uri "${mcpEndpoint}" -Method POST -Headers @{ Authorization = "Bearer <YOUR_MCP_CREDENTIAL>" } -ContentType "application/json" -Body '{"tool":"health_check"}'`;
+      case "cmd":
+        return `curl.exe -X POST ${mcpEndpoint} -H "Authorization: Bearer <YOUR_MCP_CREDENTIAL>" -H "Content-Type: application/json" -d "{\\"tool\\":\\"health_check\\"}"`;
+      case "bash":
+      default:
+        return `curl -X POST ${mcpEndpoint} -H "Authorization: Bearer <YOUR_MCP_CREDENTIAL>" -H "Content-Type: application/json" -d '{"tool":"health_check"}'`;
+    }
+  };
+
+  const claudeTestCommand = getTestCommand(shell);
   const claudeDesktopConfig = JSON.stringify(
     {
       mcpServers: {
@@ -63,15 +84,54 @@ export function McpSetupInstructions({ projectSlug, projectName }: McpSetupInstr
       </TabsList>
 
       <TabsContent value="claude-code" className="pt-4">
-        <div className="flex flex-col gap-4 rounded-lg border border-subtle bg-surface p-5">
-          <div>
-            <h3 className="text-body font-medium text-foreground">Run this in your project directory</h3>
+        <div className="flex flex-col gap-6 rounded-lg border border-subtle bg-surface p-5">
+          <div className="flex flex-col gap-3">
+            <div className="flex items-center gap-2">
+              <span className="flex h-5 w-5 items-center justify-center rounded-full bg-forest text-foreground-on-dark text-mono-sm text-[11px] font-bold">
+                1
+              </span>
+              <h3 className="text-body font-medium text-foreground">Add MCP server in your project directory</h3>
+            </div>
             <p className="text-body-sm text-foreground-muted">
-              Replace <code className="text-mono-sm">&lt;YOUR_MCP_CREDENTIAL&gt;</code> with the value
+              Run this in your project terminal to register Veriqo with Claude Code. Replace{" "}
+              <code className="text-mono-sm">&lt;YOUR_MCP_CREDENTIAL&gt;</code> with the value
               shown when you generate a credential above.
             </p>
+            <McpCommandBlock label="Terminal command" value={claudeCodeCommand} />
           </div>
-          <McpCommandBlock label="Terminal command" value={claudeCodeCommand} />
+
+          <div className="flex flex-col gap-3 border-t border-subtle pt-4">
+            <div className="flex items-center gap-2">
+              <span className="flex h-5 w-5 items-center justify-center rounded-full bg-forest text-foreground-on-dark text-mono-sm text-[11px] font-bold">
+                2
+              </span>
+              <h3 className="text-body font-medium text-foreground">Test connection and mark as connected</h3>
+            </div>
+            <p className="text-body-sm text-foreground-muted">
+              Verify the endpoint directly from your terminal or from inside Claude Code:
+            </p>
+            <div className="flex flex-col gap-2">
+              <SegmentedControl
+                label="Terminal shell"
+                value={shell}
+                onValueChange={setShell}
+                options={shellOptions}
+              />
+              <McpCommandBlock label="Terminal test command" value={claudeTestCommand} />
+            </div>
+            <div className="rounded-md border border-subtle bg-inset/40 p-3 text-body-sm text-foreground-secondary">
+              <span className="font-semibold text-foreground">Or in Claude Code:</span> ask Claude{" "}
+              <code className="rounded bg-inset px-1 py-0.5 font-mono text-[12px] text-foreground">
+                &quot;Run health check on veriqo MCP to test connection&quot;
+              </code>{" "}
+              or verify with{" "}
+              <code className="rounded bg-inset px-1 py-0.5 font-mono text-[12px] text-foreground">
+                claude mcp list
+              </code>
+              .
+            </div>
+          </div>
+
           <div className="border-t border-subtle pt-3 text-body-sm text-foreground-secondary">
             Once connected, Claude can read {projectName}&apos;s QA context and save discovered features
             directly here — later phases add tests, runs, and results the same way.
@@ -80,9 +140,14 @@ export function McpSetupInstructions({ projectSlug, projectName }: McpSetupInstr
       </TabsContent>
 
       <TabsContent value="claude-desktop" className="pt-4">
-        <div className="flex flex-col gap-4 rounded-lg border border-subtle bg-surface p-5">
-          <div className="flex flex-col gap-2.5">
-            <h3 className="text-body font-medium text-foreground">Add this server configuration</h3>
+        <div className="flex flex-col gap-6 rounded-lg border border-subtle bg-surface p-5">
+          <div className="flex flex-col gap-3">
+            <div className="flex items-center gap-2">
+              <span className="flex h-5 w-5 items-center justify-center rounded-full bg-forest text-foreground-on-dark text-mono-sm text-[11px] font-bold">
+                1
+              </span>
+              <h3 className="text-body font-medium text-foreground">Add this server configuration</h3>
+            </div>
             <SegmentedControl
               label="Operating system"
               value={os}
@@ -92,8 +157,29 @@ export function McpSetupInstructions({ projectSlug, projectName }: McpSetupInstr
             <p className="text-body-sm text-foreground-muted">
               Edit <code className="text-mono-sm">{activePath.path}</code>:
             </p>
+            <McpCommandBlock label="claude_desktop_config.json" value={claudeDesktopConfig} />
           </div>
-          <McpCommandBlock label="claude_desktop_config.json" value={claudeDesktopConfig} />
+
+          <div className="flex flex-col gap-3 border-t border-subtle pt-4">
+            <div className="flex items-center gap-2">
+              <span className="flex h-5 w-5 items-center justify-center rounded-full bg-forest text-foreground-on-dark text-mono-sm text-[11px] font-bold">
+                2
+              </span>
+              <h3 className="text-body font-medium text-foreground">Restart Claude Desktop &amp; Test Connection</h3>
+            </div>
+            <p className="text-body-sm text-foreground-muted">
+              Restart Claude Desktop to apply the new configuration. You can test and verify the connection with this terminal command:
+            </p>
+            <div className="flex flex-col gap-2">
+              <SegmentedControl
+                label="Terminal shell"
+                value={shell}
+                onValueChange={setShell}
+                options={shellOptions}
+              />
+              <McpCommandBlock label="Terminal test command" value={claudeTestCommand} />
+            </div>
+          </div>
         </div>
       </TabsContent>
     </Tabs>

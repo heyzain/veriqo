@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 
+import { RefreshButton } from "@/components/shared/refresh-button";
 import { Button } from "@/components/ui/button";
 import { Icon } from "@/components/ui/icon";
 import { McpActivityList } from "@/features/mcp/components/mcp-activity-list";
@@ -50,14 +51,17 @@ export default async function ProjectMcpPage({
           </p>
         </div>
 
-        {isConnected ? (
-          <Button asChild intent="primary" size="md">
-            <Link href={`/projects/${project.slug}/features`}>
-              <span>Next: Discover features</span>
-              <Icon name="chevronRight" size={14} />
-            </Link>
-          </Button>
-        ) : null}
+        <div className="flex items-center gap-2.5">
+          <RefreshButton label="Refresh status" size="md" intent="secondary" />
+          {isConnected ? (
+            <Button asChild intent="primary" size="md">
+              <Link href={`/projects/${project.slug}/features`}>
+                <span>Next: Discover features</span>
+                <Icon name="chevronRight" size={14} />
+              </Link>
+            </Button>
+          ) : null}
+        </div>
       </div>
 
       <McpConnectionSummary
@@ -80,12 +84,15 @@ export default async function ProjectMcpPage({
             <Icon name="mcp" size={16} className="text-foreground-muted" />
             <h2 className="text-title-md text-foreground">Recent MCP activity</h2>
           </div>
-          <Link
-            href={`/projects/${project.slug}/activity`}
-            className="text-body-sm text-action hover:underline"
-          >
-            View full activity log →
-          </Link>
+          <div className="flex items-center gap-3">
+            <RefreshButton label="Refresh" size="sm" intent="ghost" />
+            <Link
+              href={`/projects/${project.slug}/activity`}
+              className="text-body-sm text-action hover:underline"
+            >
+              View full activity log →
+            </Link>
+          </div>
         </div>
         <McpActivityList activity={snapshot.recentActivity} />
       </div>

@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
+import { RefreshButton } from "@/components/shared/refresh-button";
 import { Icon } from "@/components/ui/icon";
 import { projectNavigation } from "@/config/navigation.config";
 import type { McpConnectionStatus } from "@/config/status.config";
@@ -88,6 +89,9 @@ export function ProjectTopBar({
             ⌘K
           </kbd>
         </button>
+
+        {/* Refresh Data Button */}
+        <RefreshButton variant="icon" label="Refresh page data" size="sm" intent="ghost" />
 
         {/* Claude Connection Badge */}
         <div className="hidden sm:block">

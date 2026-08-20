@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 
+import { RefreshButton } from "@/components/shared/refresh-button";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Icon } from "@/components/ui/icon";
@@ -78,6 +79,7 @@ export default async function ProjectOverviewPage({
         </div>
 
         <div className="flex items-center gap-2.5 shrink-0">
+          <RefreshButton intent="secondary" size="md" label="Refresh" />
           <Button asChild intent="secondary" size="md">
             <Link href={`/projects/${project.slug}/settings`}>
               <Icon name="settings" size={15} />
