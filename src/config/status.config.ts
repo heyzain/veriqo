@@ -247,9 +247,14 @@ export const mcpConnectionStatuses: StatusMap<McpConnectionStatus> = {
 
 /**
  * Actor types, shared by the activity event contract (04-CONFIG-BLUEPRINT.md)
- * and any record-provenance UI (e.g. the future `SourceBadge`).
+ * and any record-provenance UI (e.g. `SourceBadge`). `automation` is
+ * Veriqo's own native execution engine (`veriqoAutomated` runs,
+ * `server/automation/`) — distinct from `claude`, which is Claude acting
+ * over MCP. Keeping them separate means an automated run's activity/results
+ * can never be mistaken for a Claude-assisted one (per the native-automation
+ * architecture doc, "Do not mislabel automated runs as Claude-assisted").
  */
-export type ActorType = "human" | "claude" | "system" | "import";
+export type ActorType = "human" | "claude" | "system" | "import" | "automation";
 
 export const actorTypes: Record<
   ActorType,
@@ -259,4 +264,23 @@ export const actorTypes: Record<
   claude: { label: "Claude", tone: "ai", icon: "claude" },
   system: { label: "System", tone: "blocked", icon: "system" },
   import: { label: "Imported", tone: "blocked", icon: "import" },
+  automation: { label: "Veriqo Automation", tone: "ai", icon: "automation" },
+};
+
+/**
+ * The three ways a `TestRun` gets executed (00-PRODUCT.md, "Execution
+ * modes"). `manual` steps through the focused runner (Phase 6);
+ * `claudeAssisted` (Phase 8) submits results over MCP; `veriqoAutomated`
+ * is Veriqo's own native execution engine (`server/automation/`) —
+ * introduced as an architectural boundary in Phase 0 with no execution
+ * engine behind it yet (see docs/05-NATIVE-AUTOMATION.md). Naming stays
+ * `executionMode` on `TestRun` rather than renaming the persisted field,
+ * per "backward compatibility is mandatory."
+ */
+export type TestExecutionMode = "manual" | "claudeAssisted" | "veriqoAutomated";
+
+export const executionModes: Record<TestExecutionMode, { label: string; tone: StatusTone; icon: IconName }> = {
+  manual: { label: "Manual", tone: "neutral", icon: "human" },
+  claudeAssisted: { label: "Claude-assisted", tone: "ai", icon: "claude" },
+  veriqoAutomated: { label: "Veriqo Automated", tone: "ai", icon: "automation" },
 };

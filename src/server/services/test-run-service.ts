@@ -16,7 +16,7 @@ import {
   testRunPublicIds,
 } from "@/server/repositories/project-repository";
 import { advanceSetupStep } from "@/server/services/project-service";
-import { resultStatuses, testRunStatuses, type ResultStatus } from "@/config/status.config";
+import { resultStatuses, testRunStatuses, type ResultStatus, type TestExecutionMode } from "@/config/status.config";
 import type { ActivityEvent, Project, TestCase, TestEvidence, TestResult, TestRun } from "@/types/domain";
 
 /**
@@ -137,8 +137,12 @@ export type CreateTestRunInput = {
   testCaseIds: string[];
   /** `RERUN` for a focused rerun created from an issue (`issue-service.createFocusedRerun`); defaults to `RUN`. */
   publicIdPrefix?: TestRunPublicIdPrefix;
-  /** Defaults to `manual` (Phase 6/7's runner). `claudeAssisted` (Phase 8) submits results over MCP instead. */
-  executionMode?: "manual" | "claudeAssisted";
+  /**
+   * Defaults to `manual` (Phase 6/7's runner). `claudeAssisted` (Phase 8)
+   * submits results over MCP instead. `veriqoAutomated` is driven through
+   * `server/automation/` rather than this input in Phase 0.
+   */
+  executionMode?: TestExecutionMode;
 };
 
 export async function createTestRun(

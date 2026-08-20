@@ -53,6 +53,7 @@ src/
     services/
     repositories/
     mcp/
+    automation/   # native automation domain boundary — see 05-NATIVE-AUTOMATION.md
   types/
   test/
 ```

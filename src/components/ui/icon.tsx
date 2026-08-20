@@ -13,6 +13,7 @@ import {
   ChevronUp,
   Circle,
   Clock,
+  Cog,
   Copy,
   Eye,
   EyeOff,
@@ -86,6 +87,7 @@ const registry = {
   claude: Bot,
   system: SquareUser,
   import: FileInput,
+  automation: Cog,
 
   // Generic UI
   check: Check,

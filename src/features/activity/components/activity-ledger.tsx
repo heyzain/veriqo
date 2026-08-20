@@ -2,6 +2,7 @@ import Link from "next/link";
 
 import { EmptyState } from "@/components/ui/empty-state";
 import { Icon } from "@/components/ui/icon";
+import { actorTypes } from "@/config/status.config";
 import { formatDateTime } from "@/lib/format/date";
 import { resolveActivityEntity } from "@/server/services/activity-service";
 import type { ActivityEvent, Project } from "@/types/domain";
@@ -56,12 +57,7 @@ export async function ActivityLedger({ project, activity, hasActiveFilters }: Ac
             <div key={event.id} className="flex items-start justify-between gap-4 py-4 first:pt-0 last:pb-0">
               <div className="flex min-w-0 items-start gap-3.5">
                 <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-subtle bg-paper-2 text-body-sm font-medium text-foreground-muted">
-                  <Icon
-                    name={
-                      event.actorType === "claude" ? "claude" : event.actorType === "system" ? "system" : event.actorType === "import" ? "import" : "human"
-                    }
-                    size={15}
-                  />
+                  <Icon name={actorTypes[event.actorType].icon} size={15} />
                 </div>
 
                 <div className="flex min-w-0 flex-col gap-0.5">

@@ -292,6 +292,28 @@ describe("test-run-service — Claude-assisted execution (Phase 8)", () => {
     expect(assisted.ok && assisted.data.testRun.executionMode).toBe("claudeAssisted");
   });
 
+  it("honors veriqoAutomated (Phase 0's native-automation execution mode) and round-trips it through repository/domain mapping", async () => {
+    const { project, caseOne } = await makeProjectWithReadyCases("Tau2");
+
+    const created = await createTestRun(
+      project,
+      createRunInput({ name: "Automated", testCaseIds: [caseOne.publicId], executionMode: "veriqoAutomated" }),
+      owner.name,
+    );
+    expect(created.ok).toBe(true);
+    if (!created.ok) return;
+    expect(created.data.testRun.executionMode).toBe("veriqoAutomated");
+
+    // Re-fetched through findTestRunByPublicId (toTestRun mapping) rather
+    // than the in-memory value createTestRun returned — proves the mode
+    // survives a real persist/read round-trip, not just the local object.
+    const detail = await getTestRunDetail(created.data.project, created.data.testRun.publicId);
+    expect(detail?.testRun.executionMode).toBe("veriqoAutomated");
+
+    const allRuns = await listTestRunsForProject(created.data.project);
+    expect(allRuns.find((run) => run.id === created.data.testRun.id)?.executionMode).toBe("veriqoAutomated");
+  });
+
   it("is idempotent: a retried submit_test_result with the same key never reprocesses", async () => {
     const { project, caseOne } = await makeProjectWithReadyCases("Upsilon");
     const run = await createTestRun(project, createRunInput({ testCaseIds: [caseOne.publicId] }), owner.name);

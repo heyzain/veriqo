@@ -20,7 +20,7 @@ import {
   saveIssue,
 } from "@/server/repositories/project-repository";
 import { createTestRun } from "@/server/services/test-run-service";
-import { issueStatuses, resultStatuses, type IssueStatus } from "@/config/status.config";
+import { issueStatuses, resultStatuses, type IssueStatus, type TestExecutionMode } from "@/config/status.config";
 import type { ActivityEvent, Feature, Issue, Project, RiskLevel, TestCase, TestResult, TestRun } from "@/types/domain";
 
 /**
@@ -279,6 +279,8 @@ export type CreateFocusedRerunInput = {
   environment: string;
   browser: string;
   assigneeName?: string;
+  /** Defaults to `manual`, same as `createTestRun` — a `veriqoAutomated` retest goes through `server/automation/` instead of a human re-running it. */
+  executionMode?: TestExecutionMode;
 };
 
 export type CreateFocusedRerunOutcome = { testRun: TestRun; issues: Issue[]; project: Project };
@@ -322,6 +324,7 @@ export async function createFocusedRerun(
       assigneeName: input.assigneeName,
       testCaseIds,
       publicIdPrefix: "RERUN",
+      executionMode: input.executionMode,
     },
     actorName,
   );

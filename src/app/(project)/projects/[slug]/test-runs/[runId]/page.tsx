@@ -4,6 +4,7 @@ import { notFound, redirect } from "next/navigation";
 
 import { AgentActivityStream } from "@/components/shared/agent-activity-stream";
 import { EntityLink } from "@/components/shared/entity-link";
+import { ExecutionModeBadge } from "@/components/shared/execution-mode-badge";
 import { SourceBadge } from "@/components/shared/source-badge";
 import { StatusBadge } from "@/components/shared/status-badge";
 import { Badge } from "@/components/ui/badge";
@@ -59,6 +60,12 @@ export default async function TestRunDetailPage({
   const issueByOriginResultId = new Map(issues.map((issue) => [issue.originResultId, issue.publicId]));
 
   const needsReviewCount = items.filter((item) => item.result.needsHumanReview).length;
+  // Claude specifically gets the prompt-composer panel below, which embeds
+  // its own progress bar — hiding the page's own one here avoids showing it
+  // twice. A `veriqoAutomated` run has no equivalent panel yet
+  // (docs/05-NATIVE-AUTOMATION.md, no execution engine behind it in Phase 0),
+  // so it keeps the ordinary progress bar/next-up banner other modes get —
+  // `RunLifecycleActions` already withholds the manual-runner link for it.
   const isClaudeAssistedInProgress =
     testRun.executionMode === "claudeAssisted" && testRun.status !== "completed" && testRun.status !== "needsAttention";
 
@@ -105,11 +112,7 @@ export default async function TestRunDetailPage({
             <span className="text-mono-sm font-semibold text-foreground-muted">{testRun.publicId}</span>
             <h1 className="text-title-lg font-serif text-foreground">{testRun.name}</h1>
             <StatusBadge status={statusDef} />
-            {testRun.executionMode === "claudeAssisted" ? (
-              <Badge tone="ai" icon="claude">
-                Claude-assisted
-              </Badge>
-            ) : null}
+            {testRun.executionMode !== "manual" ? <ExecutionModeBadge mode={testRun.executionMode} /> : null}
             {needsReviewCount > 0 ? (
               <Badge tone="partial" icon="alert">
                 {needsReviewCount} need{needsReviewCount === 1 ? "s" : ""} review
@@ -273,15 +276,7 @@ export default async function TestRunDetailPage({
             <div className="flex flex-col gap-2.5 text-body-sm">
               <div className="flex items-center justify-between border-b border-subtle pb-2">
                 <span className="text-foreground-muted">Execution mode</span>
-                {testRun.executionMode === "claudeAssisted" ? (
-                  <Badge tone="ai" icon="claude">
-                    Claude-assisted
-                  </Badge>
-                ) : (
-                  <Badge tone="neutral" icon="human">
-                    Manual
-                  </Badge>
-                )}
+                <ExecutionModeBadge mode={testRun.executionMode} />
               </div>
               <div className="flex items-center justify-between">
                 <span className="text-foreground-muted">Environment</span>

@@ -11,7 +11,11 @@ import { evidenceConfig, isAllowedEvidenceType } from "@/config/evidence.config"
 // ---- Create-run form (native FormData; values stay strings so a ----
 // ---- recoverable failure can repopulate the form via ActionState). ----
 
-export const executionModeSchema = z.enum(["manual", "claudeAssisted"]);
+// `veriqoAutomated` is accepted here for forward compatibility with the
+// domain type, but the create-run form only ever offers `manual`/
+// `claudeAssisted` (docs/05-NATIVE-AUTOMATION.md — no functional "Run
+// automatically" entry point yet).
+export const executionModeSchema = z.enum(["manual", "claudeAssisted", "veriqoAutomated"]);
 
 export const testRunCreateFormSchema = z.object({
   name: z.string().trim().min(2, "Give the run a name.").max(120, "Keep it under 120 characters."),

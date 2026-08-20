@@ -1,8 +1,8 @@
 import Link from "next/link";
 
+import { ExecutionModeBadge } from "@/components/shared/execution-mode-badge";
 import { SourceBadge } from "@/components/shared/source-badge";
 import { StatusBadge } from "@/components/shared/status-badge";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Icon } from "@/components/ui/icon";
@@ -69,11 +69,7 @@ export function TestRunList({ projectSlug, runs, hasActiveFilters }: TestRunList
                     {testRun.name}
                   </Link>
                   <StatusBadge status={statusDef} />
-                  {testRun.executionMode === "claudeAssisted" ? (
-                    <Badge tone="ai" icon="claude">
-                      Claude-assisted
-                    </Badge>
-                  ) : null}
+                  {testRun.executionMode !== "manual" ? <ExecutionModeBadge mode={testRun.executionMode} /> : null}
                 </div>
 
                 <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-body-sm text-foreground-muted">
@@ -94,7 +90,7 @@ export function TestRunList({ projectSlug, runs, hasActiveFilters }: TestRunList
               </div>
 
               <div className="flex shrink-0 items-center gap-2 self-end sm:self-start">
-                {testRun.executionMode === "claudeAssisted" &&
+                {testRun.executionMode !== "manual" &&
                 testRun.status !== "completed" &&
                 testRun.status !== "needsAttention" ? (
                   <Button asChild intent="secondary" size="sm">

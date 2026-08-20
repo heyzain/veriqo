@@ -4,6 +4,7 @@ import type {
   IssueStatus,
   ResultStatus,
   TestCaseStatus,
+  TestExecutionMode,
   TestRunStatus,
 } from "@/config/status.config";
 
@@ -164,8 +165,11 @@ export type TestRun = {
    * (Phase 8) submits results over MCP instead — the run detail page shows
    * a prompt composer and live activity in place of the runner link, and
    * flagged results go through human review rather than direct entry.
+   * `veriqoAutomated` is Veriqo's own native execution engine
+   * (`server/automation/`) — no execution engine exists behind it yet
+   * (docs/05-NATIVE-AUTOMATION.md).
    */
-  executionMode: "manual" | "claudeAssisted";
+  executionMode: TestExecutionMode;
   /**
    * Ordered — the sequence the focused runner (Phase 6) steps through.
    * References `TestCase.id`. A `TestResult` exists for every entry from the
